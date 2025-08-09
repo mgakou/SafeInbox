@@ -19,6 +19,12 @@ import(chrome.runtime.getURL("utils/local_scanner.js"))
     let threshold = DEFAULT_THRESHOLD;
     let lastEmailData = null;
     let lastHash = "";
+    const anchors = Array.from(document.querySelectorAll('.a3s a'))
+    .map(a => ({ href: a.href, text: (a.textContent || '').trim() }))
+    .slice(0, 50); // sécurité
+  
+    const senderName = document.querySelector('.gD')?.innerText || '';
+    return { subject, sender, senderName, body, links, attachments, anchors };
 
     // === Seuil depuis le popup ===
     chrome.storage?.sync?.get({ threshold: DEFAULT_THRESHOLD }, ({ threshold: t }) => {

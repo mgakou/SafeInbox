@@ -1,168 +1,272 @@
-// utils/local_scanner.js
-// Heuristiques locales pour détection de signaux faibles de phishing
 
-// Mots/expressions fréquents (FR/EN + variantes sans accents)
+// utils/local_scanner.js — moteur local renforcé (rapide & sans réseau)
+/* ======================== Dictionnaires ======================== */
 const riskyKeywords = new Set([
-  "urgent", "urgence", "immediatement", "immédiatement",
-  "compte bloqué", "compte bloque", "compte suspendu", "suspendu",
-  "paiement", "payer", "virement", "remboursement",
-  "mot de passe", "password",
-  "confidentiel", "verification", "vérification", "verifiez", "vérifiez",
-  "mise a jour", "mise à jour", "mise a jour de securite", "mise à jour de sécurité",
-  "securite", "sécurité",
-  "facture", "invoice",
-  "cliquer ici", "cliquez", "cliquer", "click here",
-  "confirmez", "confirmer", "validez", "valider",
-  "identite", "identité",
+  // pression / sécurité / finance (FR)
+  "urgent","urgence","immédiatement","immediatement","immédiat","immediat",
+  "compte bloqué","compte suspendu","vérifiez","verifiez","confidentiel",
+  "mot de passe","paiement","facture","remboursement","mise à jour","mise a jour",
+  "sécurité","securite","cliquer ici","cliquez","valider","confirmer","identité",
+  "dernière chance","dernier avertissement","sans délai",
+  // EN (courant)
+  "immediately","account locked","verify","password","payment","invoice",
+  "refund","update","security","click here","confirm","identity","last warning"
 ]);
 
-// Raccourcisseurs & domaines/tld souvent abusés
-const suspiciousDomains = new Set([
-  // shorteners
-  "bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "rebrand.ly", "buff.ly", "ow.ly", "s.id", "shorte.st", "adf.ly", "lnkd.in",
-  // tlds
-  ".tk", ".ml", ".ga", ".cf", ".gq", ".xyz", ".top", ".icu", ".cam", ".click", ".info", ".rest", ".support", ".work", ".zip", ".mov"
+// Expressions plus ciblées
+const CTA_RE        = /\b(ici|here|cliquez(?:\s+ici)?|click(?:\s+here)?|open link)\b/i;
+const PRESSURE_RE   = /\b(24\s*h|48\s*h|72\s*h|dans\s+\d{1,2}\s*(heures?|jours?)|dernier(?:\s+avertissement|e chance)|immédiatement|immediatement|sans délai|asap)\b/i;
+const CRED_RE       = /\b(mot\s*de\s*passe|password|identifiants?|credentials?|code\s*de\s*vérification|otp|2fa|authenticator)\b/i;
+const BILLING_RE    = /\b(facture|invoice|paiement|payment|remboursement|refund|virement|wire|iban|rib)\b/i;
+
+// raccourcisseurs / TLD chauds
+const shorteners = new Set([
+  "bit.ly","tinyurl.com","t.co","is.gd","cutt.ly","rebrand.ly","rb.gy","lnkd.in",
+  "goo.gl","ow.ly","s.id","shrtco.de","linktr.ee"
+]);
+const riskyTLD = new Set(["zip","mov","xyz","top","gq","tk","ml","ga","cf","click","work","shop"]);
+
+// extensions à risque
+const dangerousExt = new Set([
+  "exe","js","vbs","scr","bat","cmd","ps1","apk","jar","hta","html","htm",
+  "lnk","iso","img","dll","com","pif","wsf","svg","ace","rar","7z","zip","docm","xlsm","pptm"
 ]);
 
-// Extensions dangereuses (pièces jointes ou mentionnées)
-const dangerousExtensions = new Set([
-  ".exe", ".js", ".vbs", ".scr", ".bat", ".cmd", ".ps1", ".jar",
-  ".apk", ".iso", ".img", ".lnk", ".msi", ".reg", ".url",
-  ".html", ".htm", ".hta",
-  ".zip", ".rar", ".7z", ".dmg"
+// marques fréquentes → domaines officiels (échantillon, extensible)
+const brandDomains = {
+  "paypal": ["paypal.com"],
+  "google": ["google.com","accounts.google.com"],
+  "microsoft": ["microsoft.com","live.com","outlook.com"],
+  "apple": ["apple.com","icloud.com"],
+  "amazon": ["amazon.fr","amazon.com"],
+  "netflix": ["netflix.com"],
+  "laposte": ["laposte.fr","laposte.net"],
+  "sfr": ["sfr.fr"],
+  "orange": ["orange.fr"],
+  "societe generale": ["societegenerale.fr","sg.fr"],
+  "banque populaire": ["banque-populaire.fr","bpce.fr"]
+};
+
+// petite whitelist (réduit le score si tout est “officiel”)
+const trusted = new Set([
+  "google.com","accounts.google.com","microsoft.com","apple.com","icloud.com",
+  "amazon.fr","amazon.com","github.com","gitlab.com","stripe.com","paypal.com"
 ]);
 
-// Marques/organismes souvent ciblés (utile combiné avec pression/urgence)
-const brandNames = new Set([
-  "microsoft", "office 365", "outlook", "google", "gmail", "apple", "icloud",
-  "amazon", "paypal", "dhl", "fedex", "ups", "bank", "banque",
-  "orange", "sfr", "free", "laposte", "impots", "ameli"
-]);
+/* ======================== Helpers ======================== */
+const SLD_EXCEPTIONS = new Set(["co.uk","ac.uk","gov.uk","com.au","com.br","com.mx"]);
+const MIX_CYRILLIC = /[\u0400-\u04FF]/;   // lettres cyrilliques
+const MIX_GREEK    = /[\u0370-\u03FF]/;
 
-export function analyzeEmail({ subject = "", sender = "", body = "", links = [], attachments = [] }) {
+function normalize(text="") {
+  return text.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();
+}
+function getHostname(u="") {
+  try { return new URL(u).hostname.toLowerCase(); } catch { return ""; }
+}
+function isIPAddress(host="") {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || /^[a-f0-9:]+$/i.test(host);
+}
+function baseDomain(host="") {
+  const parts = host.split(".").filter(Boolean);
+  if (parts.length < 2) return host;
+  const lastTwo = parts.slice(-2).join(".");
+  if (SLD_EXCEPTIONS.has(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join(".");
+  }
+  return lastTwo;
+}
+function lev(a="", b="") { // Levenshtein léger
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const dp = new Array(b.length + 1).fill(0).map((_,i)=>i);
+  for (let i=1;i<=a.length;i++){
+    let prev = i-1, cur = i;
+    for (let j=1;j<=b.length;j++){
+      const tmp = dp[j];
+      dp[j] = Math.min(
+        dp[j] + 1,
+        cur + 1,
+        prev + (a[i-1] === b[j-1] ? 0 : 1)
+      );
+      prev = tmp; cur = dp[j];
+    }
+  }
+  return dp[b.length];
+}
+function hasDoubleExtension(name="") {
+  const parts = name.toLowerCase().split(".");
+  if (parts.length < 3) return false;
+  const last = parts.pop();
+  return dangerousExt.has(last); // *.pdf.exe → last=exe
+}
+function manyExclamations(text=""){ return (text.match(/!/g)||[]).length >= 3; }
+function allCapsRatio(text=""){
+  const words = text.split(/\s+/).filter(w=>w.length>=3);
+  const caps  = words.filter(w => /^[A-ZÀÂÄÇÉÈÊËÏÎÔÖÙÛÜŸ-]+$/.test(w)).length;
+  return words.length ? caps / words.length : 0;
+}
+function subdomainDepth(host=""){ return Math.max(0, host.split(".").filter(Boolean).length - 2); }
+function hasUserInfo(url=""){ try { const u=new URL(url); return !!(u.username || u.password); } catch { return false; } }
+function pathLooksPhishy(url=""){
+  try {
+    const u = new URL(url);
+    const p = (u.pathname + " " + u.search).toLowerCase();
+    if (/(login|signin|connect|verify|update|password|reset|secure|confirm)/.test(p)) return true;
+    if (/[A-Za-z0-9+/]{24,}={0,2}/.test(p)) return true; // base64-ish
+  } catch {}
+  return false;
+}
+
+/* ======================== Analyse principale ======================== */
+export function analyzeEmail({ subject="", sender="", body="", links=[], attachments=[], anchors=[] , senderName="" }) {
+  // anchors: [{href, text}], senderName: "Affichage" si dispo
   let score = 0;
   const reasons = [];
 
-  const textContent = `${subject} ${body}`.toLowerCase();
+  const text = normalize(`${subject} ${body}`);
+  const subj = normalize(subject);
+  const sndr = (sender||"").toLowerCase();
 
-  // 0) Caractères invisibles/homographes simples
-  if (/[\u200B-\u200D\uFEFF]/.test(body)) {
-    score += 5;
-    reasons.push("Caractères invisibles suspects dans le texte");
+  /* --- 1) Ton et sémantique --- */
+  for (const k of riskyKeywords) {
+    if (text.includes(k)) { score += 5.5; reasons.push(`Mot/phrase à risque: "${k}"`); }
+  }
+  if (CTA_RE.test(body))       { score += 4; reasons.push("Appel à l'action générique (cliquer ici / here)"); }
+  if (PRESSURE_RE.test(body))  { score += 6; reasons.push("Pression temporelle / délai court"); }
+  if (CRED_RE.test(body))      { score += 6; reasons.push("Demande d'identifiants / code de vérification"); }
+  if (BILLING_RE.test(body))   { score += 4; reasons.push("Thème financier/billing présent"); }
+  if (manyExclamations(subject) || manyExclamations(body)) {
+    score += 4; reasons.push("Ponctuation alarmiste (plusieurs '!')");
+  }
+  if (allCapsRatio(subject) > 0.4) {
+    score += 4; reasons.push("Sujet majoritairement en MAJUSCULES");
   }
 
-  // 1) Mots-clés directs (Set de base)
-  for (const kw of riskyKeywords) {
-    if (textContent.includes(kw)) {
-      score += 7;
-      reasons.push(`Mot/phrase à risque: "${kw}"`);
-    }
+  /* --- 2) Caractères confusables / punycode --- */
+  if (MIX_CYRILLIC.test(sndr) || MIX_GREEK.test(sndr) || MIX_CYRILLIC.test(text) || MIX_GREEK.test(text)) {
+    score += 6; reasons.push("Caractères non latins potentiellement confusables");
   }
 
-  // 1bis) Regex plus robustes (variantes & pressions)
-  const riskyRegexes = [
-    /\burgent(e|ement|emment)?\b/i,
-    /\b(cliquez|cliquer|clique|cliquer ici|click here)\b/i,
-    /\b(v[ée]rif(iez|ication)|verification)\b/i,
-    /\bmise\s*(a|à)\s*jour(\s*de\s*(la\s*)?s[ée]curit[ée])?\b/i,
-    /\b(compte|acc[èe]s)\s*(bloqu[ée]|suspendu|desactiv[ée]|désactiv[ée])\b/i,
-    /\b(derni(è|e)re|ultime)\s*chance\b/i,
-    /\b(24|48)\s*h(eures?)?\b/i
-  ];
-  let pressureHit = false;
-  for (const rx of riskyRegexes) {
-    if (rx.test(textContent)) {
-      score += 7;
-      pressureHit = true;
-      reasons.push(`Expression à risque: ${rx.source}`);
-    }
-  }
+  /* --- 3) Analyse des liens (technique & sémantique) --- */
+  const linkList = Array.isArray(links) ? links : [];
+  let allLinksTrusted = linkList.length > 0; // présume “trusted” puis infirme
 
-  // 2) URL brute dans le corps (même sans <a>)
-  if (/\bhttps?:\/\/[^\s<>")']+/i.test(body)) {
-    score += 10;
-    reasons.push("URL présente dans le texte");
-  }
+  for (const url of linkList) {
+    const host = getHostname(url);
+    if (!host) { allLinksTrusted = false; continue; }
 
-  // 3) Analyse des liens href (<a href=...>)
-  for (const link of links || []) {
-    const l = String(link || "");
-    // shorteners & TLD list
-    for (const domain of suspiciousDomains) {
-      if (l.includes(domain)) {
-        score += 10;
-        reasons.push(`Lien suspect (domaine/TLD): ${l}`);
-        break;
+    const bd = baseDomain(host);
+    if (!trusted.has(bd)) allLinksTrusted = false;
+
+    if (shorteners.has(host)) { score += 8; reasons.push(`Raccourcisseur d’URL: ${host}`); }
+    const tld = host.split(".").pop();
+    if (tld && riskyTLD.has(tld)) { score += 6; reasons.push(`TLD potentiellement risqué: .${tld}`); }
+    if (isIPAddress(host))        { score += 10; reasons.push(`Lien vers IP directe: ${host}`); }
+    if (/^http:\/\//i.test(url))  { score += 3; reasons.push("Lien non chiffré (http)"); }
+    if (/^data:/i.test(url))      { score += 10; reasons.push("Lien data: potentiellement obfusqué"); }
+    if (hasUserInfo(url))         { score += 8; reasons.push("URL avec userinfo (user@host)"); }
+    if (subdomainDepth(host) >= 3){ score += 4; reasons.push(`Sous-domaine profond: ${host}`); }
+    if (pathLooksPhishy(url))     { score += 6; reasons.push("Chemin/paramètres typiques d’hameçonnage"); }
+
+    // look-alike de marque sur le DOMAINE du lien
+    const mentioned = Object.keys(brandDomains).filter(b => text.includes(b) || subj.includes(b));
+    for (const b of mentioned) {
+      const official = brandDomains[b].map(d => baseDomain(d));
+      const near     = official.some(d => d === bd || lev(d, bd) <= 2);
+      if (!near) {
+        score += 10; reasons.push(`Marque "${b}" citée mais lien vers ${bd}`);
       }
     }
-    try {
-      const u = new URL(l);
-      const host = (u.hostname || "").toLowerCase();
-      if (host.startsWith("xn--")) {
-        score += 12;
-        reasons.push(`Domaine punycode/homographe: ${host}`);
-      }
-      // TLD haut risque supplémentaires
-      if (/\.(zip|mov)$/i.test(host)) {
-        score += 10;
-        reasons.push(`TLD à risque: ${host}`);
-      }
-    } catch { /* ignore invalid URLs */ }
   }
 
-  // 4) Extensions dangereuses mentionnées dans le corps (ex: fichier.exe)
-  const extRe = /\b[\w.-]+\.(exe|js|vbs|scr|bat|cmd|ps1|apk|jar|iso|img|lnk|msi|reg|url|html?|hta|zip|rar|7z|dmg)\b/ig;
-  const foundInBody = new Set();
-  for (const m of body.matchAll(extRe)) {
-    const hit = m[0].toLowerCase();
-    if (!foundInBody.has(hit)) {
-      foundInBody.add(hit);
-      score += 15;
-      reasons.push(`Extension dangereuse mentionnée: ${hit}`);
+  // 3bis) Texte du lien ↔ domaine du href (si anchors fournis)
+  for (const a of (anchors || [])) {
+    const host = getHostname(a.href);
+    if (!host) continue;
+    const textDom = (a.text || "").toLowerCase().match(/([a-z0-9.-]+\.[a-z]{2,})/);
+    if (textDom) {
+      const textBase = baseDomain(textDom[1]);
+      const hrefBase = baseDomain(host);
+      if (textBase && hrefBase && textBase !== hrefBase) {
+        score += 10; reasons.push(`Texte du lien affiche ${textBase} → pointe vers ${hrefBase}`);
+      }
+    }
+    // bouton “ici / here” pointant hors marque officielle
+    if (CTA_RE.test(a.text || "") && !trusted.has(baseDomain(host))) {
+      score += 4; reasons.push(`CTA générique pointe vers ${baseDomain(host)}`);
     }
   }
 
-  // 5) Pièces jointes dangereuses (et double-extension)
-  for (const file of attachments || []) {
-    const lower = String(file || "").toLowerCase();
-    for (const ext of dangerousExtensions) {
-      if (lower.endsWith(ext)) {
-        score += 15;
-        reasons.push(`Pièce jointe potentiellement dangereuse: ${file}`);
-        break;
-      }
+  /* --- 4) Pièces jointes --- */
+  for (const file of (attachments || [])) {
+    const lower = (file || "").toLowerCase();
+    const ext   = lower.split(".").pop();
+    if (dangerousExt.has(ext)) {
+      score += 12; reasons.push(`Pièce jointe à risque: ${file}`);
     }
-    if (/\.(pdf|docx?|xlsx?|pptx?|jpg|png)\.(exe|js|vbs|scr|bat|cmd|ps1)$/i.test(lower)) {
-      score += 20;
-      reasons.push(`Double extension dangereuse: ${file}`);
+    if (hasDoubleExtension(lower)) {
+      score += 12; reasons.push(`Double extension suspecte: ${file}`);
     }
   }
+  // combo texte → “mot de passe” + archive jointe
+  if (CRED_RE.test(body) && (attachments || []).some(f => /\.zip|\.rar|\.7z/i.test(f || ""))) {
+    score += 6; reasons.push("Archive jointe + mention de mot de passe");
+  }
 
-  // 6) Cohérence adresse expéditeur
+  /* --- 5) Expéditeur --- */
   try {
-    const [localPart = "", domain = ""] = sender.split("@");
+    const [localPart="", domainRaw=""] = sndr.split("@");
+    const domain = (domainRaw||"").toLowerCase();
     if (!domain) {
-      score += 5;
-      reasons.push("Adresse expéditeur non analysable");
-    } else if (!domain.toLowerCase().includes(localPart.toLowerCase())) {
-      score += 10;
-      reasons.push("Incohérence entre le nom local et le domaine de l'expéditeur");
+      score += 5; reasons.push("Adresse expéditeur non analysable");
+    } else {
+      // a) incohérence locale
+      if (localPart && !domain.includes(localPart.slice(0,5))) {
+        score += 4; reasons.push("Incohérence nom local/domaine");
+      }
+      // b) nom d’affichage contient une marque mais domaine pas officiel
+      if (senderName) {
+        const n = normalize(senderName);
+        const mentioned = Object.keys(brandDomains).filter(b => n.includes(b));
+        if (mentioned.length) {
+          const bd = baseDomain(domain);
+          for (const b of mentioned) {
+            const official = brandDomains[b].map(d => baseDomain(d));
+            const near = official.some(d => d === bd || lev(d, bd) <= 2);
+            if (!near) {
+              score += 10; reasons.push(`Nom affiche la marque "${b}" mais domaine expéditeur = ${bd}`);
+            }
+          }
+        }
+      }
     }
   } catch {
-    score += 5;
-    reasons.push("Erreur lors de l'analyse de l'adresse expéditeur");
+    score += 5; reasons.push("Erreur analyse expéditeur");
   }
 
-  // 7) Marque + pression/urgence = signal fort
-  for (const b of brandNames) {
-    if (textContent.includes(b) && pressureHit) {
-      score += 8;
-      reasons.push(`Marque citée + urgence/pression: ${b}`);
-      break;
+  /* --- 6) Indices structurels / densité --- */
+  if (/\bform\b/i.test(body) || /<input\b/i.test(body)) {
+    score += 8; reasons.push("Formulaire détecté dans l’email");
+  }
+  const plainLen = (body || "").trim().length;
+  const linkCount = (links || []).length;
+  if (plainLen < 120 && linkCount >= 1) {
+    score += 6; reasons.push("Peu de texte mais présence de lien");
+  }
+
+  /* --- 7) Anti faux-positifs léger --- */
+  if (linkCount > 0 && !isNaN(score)) {
+    // tous les liens sont “trusted” et https → on baisse un peu
+    const allHttps = (links || []).every(u => /^https:\/\//i.test(u));
+    if (allHttps && linkList.length && linkList.every(u => trusted.has(baseDomain(getHostname(u))))) {
+      score = Math.max(0, score - 8);
+      reasons.push("Liens vers domaines officiels uniquement (atténuation)");
     }
   }
 
-  // Déduplication des raisons et clamp du score
-  const uniqueReasons = Array.from(new Set(reasons));
-  return { score: Math.min(score, 100), reasons: uniqueReasons };
+  // Nettoyage raisons + clamp
+  const uniq = Array.from(new Set(reasons));
+  return { score: Math.min(100, Math.round(score)), reasons: uniq };
 }
