@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Test Local Scanner</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    h1 { margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+    th { background: #f5f5f5; text-align: left; }
+    code { background: #f0f0f0; padding: 2px 4px; border-radius: 3px; }
+    .ok { color: #2e7d32; }
+    .warn { color: #d84315; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Test Local Scanner</h1>
+  <p>Ce harness charge <code>local_scanner.js</code> et exécute des cas de test.</p>
+
+  <table id="results">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Sujet</th>
+        <th>Score</th>
+        <th>Raisons détectées</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script type="module">
+    import { analyzeEmail } from './local_scanner.js';
+
+    // --- Cas de test (ajoute/modifie à volonté) ---
+    const tests = [
+      {
+        subject: "URGENT : Mise à jour de sécurité",
+        sender: "support@banque-exemple.com",
+        body: "Veuillez cliquer ici pour vérifier votre compte immédiatement !",
+        links: ["https://bit.ly/secret-login", "https://exemple.com/page"],
+        attachments: ["fichier.zip", "document.pdf"]
+      },
+      {
+        subject: "Bonjour de votre ami",
+        sender: "ami@exemple.net",
+        body: "Salut, veux-tu qu'on se voie ce soir ?",
+        links: [],
+        attachments: []
+      },
+      {
+        subject: "Votre facture est disponible",
+        sender: "facturation@mon-fournisseur.ml",
+        body: "Veuillez télécharger la facture jointe et effectuer le paiement.",
+        links: ["https://mon-fournisseur.ml/pay"],
+        attachments: ["facture.html"]
+      },
+      {
+        subject: "Compte bloqué - vérifiez vos informations",
+        sender: "info@service.com",
+        body: "Votre compte est bloqué, cliquez ici pour le débloquer.",
+        links: ["https://tinyurl.com/faux-lien"],
+        attachments: ["update.js"]
+      }
+    ];
+
+    const tbody = document.querySelector('#results tbody');
+
+    tests.forEach((email, i) => {
+        const { score, reasons = [] } = analyzeEmail(email); // défaut tableau vide
+        const reasonsText = reasons.length ? reasons.join(' • ') : 'Aucune';
+      
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${email.subject}</td>
+          <td class="${score >= 40 ? 'warn' : 'ok'}">${score}/100</td>
+          <td>${reasonsText}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Alerte Phishing</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg: rgba(255,255,255,0.75);
+      --blur: saturate(140%) blur(8px);
+      --fg: #1f1b14;
+      --muted:#6f684f;
+      --chip:#f1ecda;
+      --border:#e8e1c6;
+      --ok:#2ea0ff; --med:#f39c12; --bad:#e53935;
+      --accent: var(--med);
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: rgba(38,34,25,0.75);
+        --fg:#f1e8c9; --muted:#c7bea3; --chip:#3b3523; --border:#4b442c;
+      }
+    }
+    html,body{
+      margin:0 !important; padding:0 !important; background:transparent;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+
+    /* Carte glassmorphism */
+    .wrap{
+      width:300px;
+      background:var(--bg);
+      -webkit-backdrop-filter:var(--blur);
+      backdrop-filter:var(--blur);
+      border:1px solid var(--border);
+      border-radius:14px;
+      border-bottom-right-radius:8px; /* optionnel: visuellement “collé” au coin */
+      box-shadow:0 12px 30px rgba(0,0,0,.18);
+      overflow:hidden;
+      color:var(--fg);
+      font-size:14px;
+      position:relative;
+      isolation:isolate;
+    }
+    .wrap::before{
+      content:""; position:absolute; inset:0; border-radius:14px;
+      padding:1px; background:linear-gradient(135deg, var(--accent), transparent 60%);
+      -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none;
+    }
+
+    /* Barre (entête) */
+    .bar{
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      cursor:pointer; user-select:none; outline:none;
+    }
+    .bar:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:10px; }
+    .dot{
+      width:10px; height:10px; border-radius:50%; flex:0 0 10px; background:var(--accent);
+      box-shadow:0 0 0 0 rgba(0,0,0,0.0);
+      animation:pulse 2.2s ease-out infinite;
+    }
+    @keyframes pulse{
+      0%{ box-shadow:0 0 0 0 rgba(0,0,0,0.15); }
+      70%{ box-shadow:0 0 0 10px rgba(0,0,0,0); }
+      100%{ box-shadow:0 0 0 0 rgba(0,0,0,0); }
+    }
+    @media (prefers-reduced-motion: reduce){
+      .dot{ animation:none; }
+    }
+    .title{ font-weight:650; letter-spacing:.2px; }
+    .spacer{ flex:1; }
+
+    /* Anneau de score */
+    .scoreWrap{ position:relative; width:40px; height:40px; flex:0 0 40px; }
+    .progress{ transform:rotate(-90deg); }
+    .progress circle.meter{ stroke:var(--border); opacity:.9; }
+    .progress circle.value{ stroke:var(--accent); transition:stroke-dashoffset .6s cubic-bezier(.22,.9,.26,1); }
+    .scoreNum{
+      position:absolute; inset:0; display:grid; place-items:center;
+      font-size:12px; font-variant-numeric:tabular-nums; color:var(--fg);
+    }
+
+    /* Panneau d’actions — slide-up */
+    .panel{
+      max-height:0; overflow:hidden; padding:0 12px;
+      opacity:0; transform:translateY(10px);
+      border-top:1px dashed var(--border);
+      transition:
+        max-height 300ms cubic-bezier(.2,.8,.2,1),
+        opacity 180ms linear,
+        transform 300ms cubic-bezier(.2,.8,.2,1),
+        padding 300ms cubic-bezier(.2,.8,.2,1);
+    }
+    .open .panel{ opacity:1; transform:translateY(0); padding:8px 12px 12px; }
+
+    @media (prefers-reduced-motion: reduce){
+      .panel{ transition:none !important; transform:none !important; }
+    }
+
+    .actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px; }
+    .btn{
+      display:flex; align-items:center; gap:8px; justify-content:center;
+      border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+      background:rgba(255,255,255,.20);
+      color:var(--fg); cursor:pointer; font-size:12px; line-height:1;
+      transition: transform .08s ease, background .2s ease;
+    }
+    @media (prefers-color-scheme: dark){ .btn{ background:rgba(0,0,0,.15); } }
+    .btn:hover{ background:var(--chip); }
+    .btn:active{ transform:translateY(1px); }
+    .btn svg{ width:16px; height:16px; opacity:.9; }
+
+    .chips{ display:none; gap:6px; flex-wrap:wrap; margin-top:10px; }
+    .chips.show{ display:flex; }
+    .chip{ background:var(--chip); border:1px solid var(--border); padding:3px 8px; border-radius:999px; font-size:12px; }
+
+    .x{
+      margin-left:8px; background:transparent; border:none; cursor:pointer;
+      color:var(--muted); font-size:18px; line-height:1;
+    }
+
+    /* Sévérités → couleur d’accent */
+    .sev-low  { --accent: var(--ok); }
+    .sev-med  { --accent: var(--med); }
+    .sev-high { --accent: var(--bad); }
+  </style>
+</head>
+<body>
+  <div id="root" class="wrap sev-med" role="region" aria-label="Alerte phishing">
+    <!-- tabindex + role=button pour accessibilité clavier -->
+    <div class="bar" id="bar" tabindex="0" role="button" aria-controls="panel" aria-expanded="false">
+      <div class="dot" aria-hidden="true"></div>
+      <div class="title">Email potentiellement frauduleux</div>
+      <div class="spacer"></div>
+      <div class="scoreWrap" aria-label="Score d'analyse">
+        <svg class="progress" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+          <circle class="meter" cx="20" cy="20" r="18" fill="none" stroke-width="4"></circle>
+          <circle id="prog" class="value" cx="20" cy="20" r="18" fill="none" stroke-width="4" stroke-linecap="round"></circle>
+        </svg>
+        <div id="scoreNum" class="scoreNum">--</div>
+      </div>
+      <button id="close" class="x" title="Fermer" aria-label="Fermer">×</button>
+    </div>
+
+    <div class="panel" id="panel" aria-label="Actions">
+      <div class="actions">
+        <button class="btn" id="manualAnalyzeBtn" title="Relancer l'analyse">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 6v3l4-4-4-4v3a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6Z"/></svg>
+          Analyser ce mail
+        </button>
+        <button class="btn" id="deepScanBtn" title="Analyse approfondie">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 6.32 17.9l3.39 3.39 1.41-1.41-3.39-3.39A10 10 0 0 0 12 2Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z"/></svg>
+          Profondeur
+        </button>
+        <button class="btn" id="highlightBtn" title="Mettre en évidence">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18.71-11.04a1 1 0 0 0 0-1.41l-2.51-2.51a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 2-1.66Z"/></svg>
+          Surligner
+        </button>
+        <button class="btn" id="ignoreBtn" title="Ignorer cet expéditeur">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4 0-8 2-8 6v2h16v-2c0-4-4-6-8-6Z"/></svg>
+          Ignorer
+        </button>
+        <button class="btn" id="toggleDetails" title="Voir détails">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5H7z"/></svg>
+          Voir détails
+        </button>
+        <button class="btn" id="closePanelBtn" title="Fermer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.3 19.71 2.89 18.3 9.17 12 2.89 5.71 4.3 4.3l6.29 6.29 6.3-6.3z"/></svg>
+          Fermer
+        </button>
+      </div>
+
+      <div class="chips" id="reasonsChips" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <script src="warning_banner.js"></script>
+</body>
+</html>

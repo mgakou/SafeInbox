@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Anti-Phishing</title>
+    <link rel="stylesheet" href="../ui/style.css">
+</head>
+<body>
+    <h1>Anti-Phishing Scanner</h1>
+    <button id="last-scan-btn">Afficher dernier scan</button>
+    <div id="scan-result"></div>
+    <hr />
+    <h2>Paramètres</h2>
+    <label>
+        Seuil local :
+        <input type="number" id="threshold-input" min="0" max="100" />
+    </label>
+    <button id="save-btn">Enregistrer</button>
+    <hr />
+    <a href="#" id="privacy-link">Politique de confidentialité</a>
+    <script src="popup.js" defer></script>
+</body>
+</html>
