@@ -1,3 +1,9 @@
 .vscode
 venv 
-.DS_Store 
+.env
+.env.*
+!.env.example
+backend/.env
+.DS_Store backend/.env
+.env
+.env.*

@@ -1,52 +1,55 @@
-// popup.js
-// Gère l'interface et les paramètres de l'extension
+document.addEventListener('DOMContentLoaded', () => {
+    const menuBtn     = document.getElementById('menuBtn');      // ✅ correct ID
+    const closeBtn    = document.getElementById('closeBtn');     // ✅ correct ID
+    const popupMenu   = document.getElementById('popupMenu');    // ✅ correct ID
+    const saveBtn     = document.getElementById('saveThresholdBtn'); // ✅
+    const thresholdInput = document.getElementById('thresholdInput'); // ✅
+    const scanBtn     = document.getElementById('scanBtn');      // nouveau bouton analyse locale
+    const deepScanBtn = document.getElementById('deepScanBtn');  // nouveau bouton analyse backend
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const thresholdInput = document.getElementById('threshold-input');
-    const saveBtn = document.getElementById('save-btn');
-    const lastScanBtn = document.getElementById('last-scan-btn');
-    const scanResultDiv = document.getElementById('scan-result');
+    // Fermer popup
+    closeBtn.addEventListener('click', () => window.close());
 
-    // Charger le seuil enregistré (par défaut 40)
-    const loadThreshold = async () => {
-        const { threshold } = await chrome.storage.sync.get({ threshold: 10 });
-        thresholdInput.value = threshold;
-    };
+    // Affichage menu
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Empêche la propagation pour l'écouteur global
+      popupMenu.classList.toggle('hidden');
+    });
 
-    // Enregistrer le seuil lors du clic
-    const saveThreshold = () => {
-        const t = parseInt(thresholdInput.value, 10);
-        if (isNaN(t) || t < 0 || t > 100) {
-            alert('Seuil invalide (0-100)');
-            return;
+    // UX bonus: Fermer le menu si on clique en dehors
+    document.addEventListener('click', (e) => {
+      if (!popupMenu.classList.contains('hidden')) {
+        // Si le clic n'est ni sur le menu ni sur le bouton menu, on ferme
+        if (!popupMenu.contains(e.target) && e.target !== menuBtn) {
+          popupMenu.classList.add('hidden');
         }
-        chrome.storage.sync.set({ threshold: t }, () => alert('Paramètres enregistrés'));
-    };
+      }
+    });
 
-    // Afficher le dernier rapport de scan approfondi
-    const displayLastScanReport = () => {
-        chrome.runtime.sendMessage({ action: 'getLastDeepScan' }, (response) => {
-            if (response?.report) {
-                const { score, summary, timestamp } = response.report;
-                scanResultDiv.innerHTML = `
-                    <p><strong>Score :</strong> ${score}/100</p>
-                    <p><strong>Date :</strong> ${new Date(timestamp).toLocaleString()}</p>
-                    <p><strong>Rapport :</strong> ${summary}</p>
-                `;
-            } else {
-                scanResultDiv.textContent = 'Aucun scan disponible.';
-            }
+    // Seuil
+    chrome.storage.sync.get({ threshold: 40 }, ({ threshold }) => {
+      thresholdInput.value = threshold;
+    });
+
+    saveBtn.addEventListener('click', () => {
+      const val = parseInt(thresholdInput.value);
+      if (!isNaN(val) && val >= 0 && val <= 100) {
+        chrome.storage.sync.set({ threshold: val }, () => {
+          alert('Seuil enregistré.');
+          popupMenu.classList.add('hidden');
         });
-    };
+      } else {
+        alert("Veuillez entrer un nombre entre 0 et 100.");
+      }
+    });
 
-    // Ouvrir la politique de confidentialité dans un nouvel onglet
-    const openPrivacyPolicy = (e) => {
-        e.preventDefault();
-        chrome.tabs.create({ url: chrome.runtime.getURL('privacy.html') });
-    };
+    // Bouton analyse locale
+    scanBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'scan' });
+    });
 
-    await loadThreshold();
-    saveBtn.addEventListener('click', saveThreshold);
-    lastScanBtn.addEventListener('click', displayLastScanReport);
-    document.getElementById('privacy-link').addEventListener('click', openPrivacyPolicy);
-});
+    // Bouton analyse backend
+    deepScanBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'deepScan' });
+    });
+  });
