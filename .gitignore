@@ -4,4 +4,6 @@ venv
 .env.*
 !.env.example
 backend/.env
-.DS_Store 
+.DS_Store backend/.env
+.env
+.env.*
