@@ -16,11 +16,12 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "utils/local_scanner.js",
-        "ui/warning_banner.html",
-        "ui/warning_banner.js",
-        "ui/styles.css",
-        "icons/*"
+        "utils/anti_phish_scanner.js",
+        "utils/validators.js",
+        "popup/popup.js",
+        "background/background.js",
+        "icons/*",
+        "content_scripts/content.js"
       ],
       "matches": ["https://mail.google.com/*"]
     }

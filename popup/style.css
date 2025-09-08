@@ -1,0 +1,82 @@
+body {
+    width: 420px; /* plus large */
+    min-height: 160px;
+  }
+  
+  .popup-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 8px;
+  }
+  
+  .popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  
+  .popup-controls {
+    display: flex;
+    gap: 6px;
+  }
+  
+  .icon-button {
+    background: none;
+    border: none;
+    color: var(--fg-color);
+    font-size: 18px;
+    cursor: pointer;
+  }
+  
+  .popup-body {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    padding: 10px 0;
+  }
+  
+  .button-scan, .button-deepscan {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  .button-scan {
+    background-color: var(--accent-color);
+    color: #000;
+  }
+  
+  .button-scan:hover {
+    background-color: #e0b800;
+  }
+  
+  .button-deepscan {
+    background-color: var(--fg-color);
+    color: var(--bg-color);
+  }
+  
+  .button-deepscan:hover {
+    background-color: #555;
+  }
+  
+  .score-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+  
+  .score-display {
+    font-size: 14px;
+  }
+  
+  .options-menu {
+    margin-top: 12px;
+    padding: 10px;
+  }

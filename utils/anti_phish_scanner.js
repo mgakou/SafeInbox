@@ -270,3 +270,112 @@ export function analyzeEmail({ subject="", sender="", body="", links=[], attachm
   const uniq = Array.from(new Set(reasons));
   return { score: Math.min(100, Math.round(score)), reasons: uniq };
 }
+
+
+
+
+// ------------------------------------------------
+
+import { validateEmail, validateLinks, validateSubject, validateBody } from './validators';
+
+// Importing necessary modules for validation
+
+/**
+ * Fonction de validation des données d'e-mail
+ * @param {Object} emailData - Données extraites du DOM Gmail
+ * @returns {boolean} true si les données sont valides, sinon false
+ */
+function validerEmailData(emailData) {
+    if (!emailData || typeof emailData !== 'object') return false;
+
+    const { subject, body, sender, links, attachments } = emailData;
+
+    return (
+        validateSubject(subject) &&
+        validateBody(body) &&
+        validateEmail(sender) &&
+        validateLinks(links) &&
+        Array.isArray(attachments)
+      );
+}
+
+// Ajout de la validation dans la fonction principale
+export function filtrerEmailAvantEnvoi(emailData) {
+    if (!validerEmailData(emailData)) {
+        throw new Error('Données d\'email invalides');
+    }
+
+    return {
+        subject: filtrerSujet(emailData.subject),
+        body_cleaned: filtrerCorps(emailData.body),
+        sender_domain: filtrerDomaineExpediteur(emailData.sender),
+        links: filtrerLiens(emailData.links),
+        attachments: filtrerPiecesJointes(emailData.attachments)
+    };
+}
+  
+  /**
+   * Nettoyage du sujet : trim + troncature à 300 caractères
+   * @param {string} subject
+   * @returns {string}
+   */
+  function filtrerSujet(subject) {
+    return typeof subject === 'string' ? subject.trim().slice(0, 300) : "";
+  }
+  
+  /**
+   * Nettoyage du corps de mail : anonymisation et réduction de bruit
+   * @param {string} body
+   * @returns {string}
+   */
+  function filtrerCorps(body) {
+    if (!body || typeof body !== 'string') return "";
+  
+    return body
+      .replace(/https?:\/\/[^\s]+/g, '[URL]')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
+      .replace(/Monsieur\s+[^,\n]+/gi, 'Monsieur [nom]')
+      .replace(/Madame\s+[^,\n]+/gi, 'Madame [nom]')
+      .replace(/\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}/g, '[numéro]')
+      .replace(/\s{2,}/g, ' ') // supprimer les doubles espaces
+      .trim()
+      .slice(0, 2000); // limite de taille pour éviter surcharge API
+  }
+  
+  /**
+   * Extraction du domaine depuis l'adresse email de l'expéditeur
+   * @param {string} sender
+   * @returns {string} domaine (ex: gmail.com)
+   */
+  function filtrerDomaineExpediteur(sender) {
+    const match = typeof sender === 'string' ? sender.match(/@([\w.-]+)/) : null;
+    return match ? match[1].toLowerCase() : "";
+  }
+  
+  /**
+   * Filtrage des liens valides (http/https uniquement)
+   * @param {Array<string>} links
+   * @returns {Array<string>} liens filtrés
+   */
+  function filtrerLiens(links) {
+    if (!Array.isArray(links)) return [];
+    return links
+      .filter((url) => typeof url === 'string' && /^https?:\/\//i.test(url))
+      .map((url) => url.trim());
+  }
+  
+  /**
+   * Nettoyage des noms de pièces jointes (pas de contenu)
+   * @param {Array<string>} attachments
+   * @returns {Array<string>} noms filtrés
+   */
+  function filtrerPiecesJointes(attachments) {
+    if (!Array.isArray(attachments)) return [];
+    return attachments
+      .filter((name) => typeof name === 'string')
+      .map((name) => name.trim())
+      .filter(Boolean);
+  }
+  
+
+  
