@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Gmail Anti-Phishing Scanner",
+  "name": "SafeInbox",
   "version": "1.0",
   "permissions": ["scripting", "activeTab", "storage", "notifications"],
   "host_permissions": ["https://mail.google.com/*"],
@@ -17,9 +17,13 @@
     {
       "resources": [
         "utils/local_scanner.js",
+        "utils/rules.json",
+        "utils/trusted_senders.json",
+        "utils/trusted.js",
         "ui/warning_banner.html",
         "ui/warning_banner.js",
         "ui/styles.css",
+        "popup/styles.css",
         "icons/*"
       ],
       "matches": ["https://mail.google.com/*"]

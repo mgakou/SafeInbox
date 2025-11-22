@@ -1,0 +1,137 @@
+body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    padding: 14px;
+    width: 320px;
+    color: #1f1f1f;
+    background: #fafafa;
+  }
+  
+  h1 {
+    font-size: 18px;
+    color: #0066cc;
+    margin-bottom: 8px;
+  }
+  
+  h2 {
+    font-size: 15px;
+    margin-top: 18px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 2px;
+  }
+  
+  button {
+    background: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  
+  button:hover {
+    background: #004a99;
+  }
+  
+  input[type="number"] {
+    width: 60px;
+    margin-left: 6px;
+  }
+  
+  .status {
+    font-size: 12px;
+    color: #4CAF50;
+    margin-top: 6px;
+  }
+  
+  .section {
+    margin-top: 14px;
+  }
+  
+  .toggle-btn {
+    background: #f1f3f4;
+    color: #333;
+    width: 100%;
+    text-align: left;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .toggle-btn:hover {
+    background: #e0e3e7;
+  }
+  
+  #ignored-container {
+    margin-top: 6px;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+    overflow: hidden;
+    opacity: 1;
+  }
+  
+  .collapsed {
+    max-height: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 130px;
+    overflow-y: auto;
+  }
+  
+  li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f0f4f9;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-top: 4px;
+    font-size: 13px;
+  }
+  
+  li span.email {
+    word-break: break-all;
+    color: #333;
+    flex: 1;
+  }
+  
+  li span.remove {
+    color: #d9534f;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 15px;
+    padding: 2px 6px;
+    border-radius: 50%;
+  }
+  
+  li span.remove:hover {
+    background: rgba(217, 83, 79, 0.15);
+  }
+  
+  #clear-list {
+    background: #e53935;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 10px;
+    margin-top: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    width: 100%;
+  }
+  
+  #clear-list:hover {
+    background: #c62828;
+  }

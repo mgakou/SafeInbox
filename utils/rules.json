@@ -1,0 +1,47 @@
+{
+    "keywords": {
+      "risky": [
+        "urgent", "urgence", "immédiatement", "immediatement",
+        "compte bloqué", "compte suspendu", "vérifiez", "confidentiel",
+        "mot de passe", "paiement", "facture", "remboursement",
+        "mise à jour", "mise a jour", "sécurité", "cliquer ici",
+        "valider", "confirmer", "identité", "dernier avertissement",
+        "immediately", "account locked", "verify", "password",
+        "payment", "invoice", "refund", "update", "click here",
+        "confirm", "identity", "last warning"
+      ]
+    },
+    "urls": {
+      "shorteners": [
+        "bit.ly", "tinyurl.com", "t.co", "is.gd",
+        "cutt.ly", "rebrand.ly", "rb.gy", "lnkd.in",
+        "goo.gl", "ow.ly", "s.id", "shrtco.de", "linktr.ee"
+      ],
+      "riskyTLD": ["zip","mov","xyz","top","gq","tk","ml","ga","cf","click","work","shop"]
+    },
+    "attachments": {
+      "dangerous": [
+        "exe","js","vbs","scr","bat","cmd","ps1","apk","jar",
+        "hta","html","htm","lnk","iso","img","dll","com","pif",
+        "wsf","svg","ace","rar","7z","zip","docm","xlsm","pptm"
+      ]
+    },
+    "brands": {
+      "paypal": ["paypal.com"],
+      "google": ["google.com","accounts.google.com"],
+      "microsoft": ["microsoft.com","live.com","outlook.com"],
+      "apple": ["apple.com","icloud.com"],
+      "amazon": ["amazon.fr","amazon.com"],
+      "netflix": ["netflix.com"],
+      "laposte": ["laposte.fr","laposte.net"],
+      "sfr": ["sfr.fr"],
+      "orange": ["orange.fr"],
+      "societe generale": ["societegenerale.fr","sg.fr"],
+      "banque populaire": ["banque-populaire.fr","bpce.fr"]
+    },
+    "trusted": [
+      "google.com","accounts.google.com","microsoft.com",
+      "apple.com","icloud.com","amazon.fr","amazon.com",
+      "github.com","gitlab.com","stripe.com","paypal.com"
+    ]
+  }

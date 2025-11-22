@@ -67,6 +67,7 @@
 
   // --- Réception des données {score, reasons, sender} ---
   window.addEventListener('message', ({ data }) => {
+    
     if (!data) return;
     if (typeof data.score === 'number') setScore(data.score);
 

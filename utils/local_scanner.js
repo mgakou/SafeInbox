@@ -1,272 +1,184 @@
+// ================================================================
+// utils/local_scanner.js — moteur local basé sur un fichier JSON externe
+// Analyse complète + analyse légère (trusted senders)
+// ================================================================
 
-// utils/local_scanner.js — moteur local renforcé (rapide & sans réseau)
-/* ======================== Dictionnaires ======================== */
-const riskyKeywords = new Set([
-  // pression / sécurité / finance (FR)
-  "urgent","urgence","immédiatement","immediatement","immédiat","immediat",
-  "compte bloqué","compte suspendu","vérifiez","verifiez","confidentiel",
-  "mot de passe","paiement","facture","remboursement","mise à jour","mise a jour",
-  "sécurité","securite","cliquer ici","cliquez","valider","confirmer","identité",
-  "dernière chance","dernier avertissement","sans délai",
-  // EN (courant)
-  "immediately","account locked","verify","password","payment","invoice",
-  "refund","update","security","click here","confirm","identity","last warning"
-]);
+let RULES = null;
 
-// Expressions plus ciblées
-const CTA_RE        = /\b(ici|here|cliquez(?:\s+ici)?|click(?:\s+here)?|open link)\b/i;
-const PRESSURE_RE   = /\b(24\s*h|48\s*h|72\s*h|dans\s+\d{1,2}\s*(heures?|jours?)|dernier(?:\s+avertissement|e chance)|immédiatement|immediatement|sans délai|asap)\b/i;
-const CRED_RE       = /\b(mot\s*de\s*passe|password|identifiants?|credentials?|code\s*de\s*vérification|otp|2fa|authenticator)\b/i;
-const BILLING_RE    = /\b(facture|invoice|paiement|payment|remboursement|refund|virement|wire|iban|rib)\b/i;
-
-// raccourcisseurs / TLD chauds
-const shorteners = new Set([
-  "bit.ly","tinyurl.com","t.co","is.gd","cutt.ly","rebrand.ly","rb.gy","lnkd.in",
-  "goo.gl","ow.ly","s.id","shrtco.de","linktr.ee"
-]);
-const riskyTLD = new Set(["zip","mov","xyz","top","gq","tk","ml","ga","cf","click","work","shop"]);
-
-// extensions à risque
-const dangerousExt = new Set([
-  "exe","js","vbs","scr","bat","cmd","ps1","apk","jar","hta","html","htm",
-  "lnk","iso","img","dll","com","pif","wsf","svg","ace","rar","7z","zip","docm","xlsm","pptm"
-]);
-
-// marques fréquentes → domaines officiels (échantillon, extensible)
-const brandDomains = {
-  "paypal": ["paypal.com"],
-  "google": ["google.com","accounts.google.com"],
-  "microsoft": ["microsoft.com","live.com","outlook.com"],
-  "apple": ["apple.com","icloud.com"],
-  "amazon": ["amazon.fr","amazon.com"],
-  "netflix": ["netflix.com"],
-  "laposte": ["laposte.fr","laposte.net"],
-  "sfr": ["sfr.fr"],
-  "orange": ["orange.fr"],
-  "societe generale": ["societegenerale.fr","sg.fr"],
-  "banque populaire": ["banque-populaire.fr","bpce.fr"]
-};
-
-// petite whitelist (réduit le score si tout est “officiel”)
-const trusted = new Set([
-  "google.com","accounts.google.com","microsoft.com","apple.com","icloud.com",
-  "amazon.fr","amazon.com","github.com","gitlab.com","stripe.com","paypal.com"
-]);
+/* ======================== Chargement des règles ======================== */
+export async function loadRules() {
+  if (RULES) return RULES; // cache
+  const res = await fetch(chrome.runtime.getURL("utils/rules.json"));
+  RULES = await res.json();
+  console.log("[SafeInbox] Règles chargées :", RULES);
+  return RULES;
+}
 
 /* ======================== Helpers ======================== */
-const SLD_EXCEPTIONS = new Set(["co.uk","ac.uk","gov.uk","com.au","com.br","com.mx"]);
-const MIX_CYRILLIC = /[\u0400-\u04FF]/;   // lettres cyrilliques
+const MIX_CYRILLIC = /[\u0400-\u04FF]/;
 const MIX_GREEK    = /[\u0370-\u03FF]/;
+const SLD_EXCEPTIONS = new Set(["co.uk","ac.uk","gov.uk","com.au","com.br","com.mx"]);
 
-function normalize(text="") {
-  return text.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();
+function normalize(t=""){return t.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase();}
+function getHostname(u=""){try{return new URL(u).hostname.toLowerCase();}catch{return"";}}
+function baseDomain(h=""){
+  const p=h.split(".").filter(Boolean);
+  if(p.length<2)return h;
+  const lastTwo=p.slice(-2).join(".");
+  return SLD_EXCEPTIONS.has(lastTwo)&&p.length>=3?p.slice(-3).join("."):lastTwo;
 }
-function getHostname(u="") {
-  try { return new URL(u).hostname.toLowerCase(); } catch { return ""; }
-}
-function isIPAddress(host="") {
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || /^[a-f0-9:]+$/i.test(host);
-}
-function baseDomain(host="") {
-  const parts = host.split(".").filter(Boolean);
-  if (parts.length < 2) return host;
-  const lastTwo = parts.slice(-2).join(".");
-  if (SLD_EXCEPTIONS.has(lastTwo) && parts.length >= 3) {
-    return parts.slice(-3).join(".");
-  }
-  return lastTwo;
-}
-function lev(a="", b="") { // Levenshtein léger
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-  const dp = new Array(b.length + 1).fill(0).map((_,i)=>i);
-  for (let i=1;i<=a.length;i++){
-    let prev = i-1, cur = i;
-    for (let j=1;j<=b.length;j++){
-      const tmp = dp[j];
-      dp[j] = Math.min(
-        dp[j] + 1,
-        cur + 1,
-        prev + (a[i-1] === b[j-1] ? 0 : 1)
-      );
-      prev = tmp; cur = dp[j];
-    }
-  }
+function lev(a="",b=""){if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;
+  const dp=new Array(b.length+1).fill(0).map((_,i)=>i);
+  for(let i=1;i<=a.length;i++){let prev=i-1,cur=i;
+    for(let j=1;j<=b.length;j++){const tmp=dp[j];
+      dp[j]=Math.min(dp[j]+1,cur+1,prev+(a[i-1]===b[j-1]?0:1));
+      prev=tmp;cur=dp[j];
+    }}
   return dp[b.length];
 }
-function hasDoubleExtension(name="") {
-  const parts = name.toLowerCase().split(".");
-  if (parts.length < 3) return false;
-  const last = parts.pop();
-  return dangerousExt.has(last); // *.pdf.exe → last=exe
-}
-function manyExclamations(text=""){ return (text.match(/!/g)||[]).length >= 3; }
-function allCapsRatio(text=""){
-  const words = text.split(/\s+/).filter(w=>w.length>=3);
-  const caps  = words.filter(w => /^[A-ZÀÂÄÇÉÈÊËÏÎÔÖÙÛÜŸ-]+$/.test(w)).length;
-  return words.length ? caps / words.length : 0;
-}
-function subdomainDepth(host=""){ return Math.max(0, host.split(".").filter(Boolean).length - 2); }
-function hasUserInfo(url=""){ try { const u=new URL(url); return !!(u.username || u.password); } catch { return false; } }
-function pathLooksPhishy(url=""){
-  try {
-    const u = new URL(url);
-    const p = (u.pathname + " " + u.search).toLowerCase();
-    if (/(login|signin|connect|verify|update|password|reset|secure|confirm)/.test(p)) return true;
-    if (/[A-Za-z0-9+/]{24,}={0,2}/.test(p)) return true; // base64-ish
-  } catch {}
-  return false;
+
+// ✅ sécurisation : vérifier que RULES est chargé avant utilisation
+function hasDoubleExtension(n=""){
+  if (!RULES || !RULES.attachments) return false;
+  const p=n.toLowerCase().split(".");
+  if (p.length < 3) return false;
+  return RULES.attachments.dangerous.includes(p.pop());
 }
 
-/* ======================== Analyse principale ======================== */
-export function analyzeEmail({ subject="", sender="", body="", links=[], attachments=[], anchors=[] , senderName="" }) {
-  // anchors: [{href, text}], senderName: "Affichage" si dispo
+function isIPAddress(h=""){return /^(\d{1,3}\.){3}\d{1,3}$/.test(h)||/^[a-f0-9:]+$/i.test(h);}
+function subdomainDepth(h=""){return Math.max(0,h.split(".").filter(Boolean).length-2);}
+function manyExclamations(t=""){return (t.match(/!/g)||[]).length>=3;}
+function allCapsRatio(t=""){const w=t.split(/\s+/).filter(x=>x.length>=3);
+  const caps=w.filter(x=>/^[A-ZÀÂÄÇÉÈÊËÏÎÔÖÙÛÜŸ-]+$/.test(x)).length;
+  return w.length?caps/w.length:0;}
+function pathLooksPhishy(u=""){try{
+  const p=(new URL(u).pathname+" "+new URL(u).search).toLowerCase();
+  return /(login|signin|verify|update|password|reset|secure|confirm)/.test(p);
+}catch{return false;}}
+
+/* ======================== Analyse complète ======================== */
+export async function analyzeEmail({ subject="", sender="", body="", links=[], attachments=[], anchors=[], senderName="" }) {
+  const rules = await loadRules(); // 🔸 s'assure que RULES est rempli
   let score = 0;
   const reasons = [];
 
   const text = normalize(`${subject} ${body}`);
   const subj = normalize(subject);
-  const sndr = (sender||"").toLowerCase();
+  const sndr = (sender || "").toLowerCase();
 
-  /* --- 1) Ton et sémantique --- */
-  for (const k of riskyKeywords) {
-    if (text.includes(k)) { score += 5.5; reasons.push(`Mot/phrase à risque: "${k}"`); }
+  // --- 1) Analyse du contenu texte ---
+  for (const word of rules.keywords.risky) {
+    if (text.includes(word)) { score += 5; reasons.push(`Mot clé suspect : "${word}"`); }
   }
-  if (CTA_RE.test(body))       { score += 4; reasons.push("Appel à l'action générique (cliquer ici / here)"); }
-  if (PRESSURE_RE.test(body))  { score += 6; reasons.push("Pression temporelle / délai court"); }
-  if (CRED_RE.test(body))      { score += 6; reasons.push("Demande d'identifiants / code de vérification"); }
-  if (BILLING_RE.test(body))   { score += 4; reasons.push("Thème financier/billing présent"); }
-  if (manyExclamations(subject) || manyExclamations(body)) {
-    score += 4; reasons.push("Ponctuation alarmiste (plusieurs '!')");
-  }
-  if (allCapsRatio(subject) > 0.4) {
-    score += 4; reasons.push("Sujet majoritairement en MAJUSCULES");
-  }
+  if (manyExclamations(subject)||manyExclamations(body)) {score+=4;reasons.push("Ponctuation alarmiste");}
+  if (allCapsRatio(subject)>0.4){score+=4;reasons.push("Sujet en majuscules");}
 
-  /* --- 2) Caractères confusables / punycode --- */
-  if (MIX_CYRILLIC.test(sndr) || MIX_GREEK.test(sndr) || MIX_CYRILLIC.test(text) || MIX_GREEK.test(text)) {
-    score += 6; reasons.push("Caractères non latins potentiellement confusables");
-  }
-
-  /* --- 3) Analyse des liens (technique & sémantique) --- */
-  const linkList = Array.isArray(links) ? links : [];
-  let allLinksTrusted = linkList.length > 0; // présume “trusted” puis infirme
-
-  for (const url of linkList) {
+  // --- 2) Liens et domaines ---
+  for (const url of links) {
     const host = getHostname(url);
-    if (!host) { allLinksTrusted = false; continue; }
+    const base = baseDomain(host);
+    const tld  = host.split(".").pop();
 
-    const bd = baseDomain(host);
-    if (!trusted.has(bd)) allLinksTrusted = false;
+    if (rules.urls.shorteners.includes(host)) {score+=8;reasons.push(`Raccourcisseur : ${host}`);}
+    if (rules.urls.riskyTLD.includes(tld))   {score+=6;reasons.push(`TLD risqué : .${tld}`);}
+    if (isIPAddress(host))                   {score+=10;reasons.push(`Lien vers IP : ${host}`);}
+    if (/^http:\/\//i.test(url))             {score+=3;reasons.push("Lien non sécurisé (HTTP)");}
+    if (/^data:/i.test(url))                 {score+=10;reasons.push("Lien data: potentiellement obfusqué");}
+    if (subdomainDepth(host)>=3)             {score+=4;reasons.push(`Sous-domaine profond : ${host}`);}
+    if (pathLooksPhishy(url))                {score+=6;reasons.push("Chemin typique d’hameçonnage");}
 
-    if (shorteners.has(host)) { score += 8; reasons.push(`Raccourcisseur d’URL: ${host}`); }
-    const tld = host.split(".").pop();
-    if (tld && riskyTLD.has(tld)) { score += 6; reasons.push(`TLD potentiellement risqué: .${tld}`); }
-    if (isIPAddress(host))        { score += 10; reasons.push(`Lien vers IP directe: ${host}`); }
-    if (/^http:\/\//i.test(url))  { score += 3; reasons.push("Lien non chiffré (http)"); }
-    if (/^data:/i.test(url))      { score += 10; reasons.push("Lien data: potentiellement obfusqué"); }
-    if (hasUserInfo(url))         { score += 8; reasons.push("URL avec userinfo (user@host)"); }
-    if (subdomainDepth(host) >= 3){ score += 4; reasons.push(`Sous-domaine profond: ${host}`); }
-    if (pathLooksPhishy(url))     { score += 6; reasons.push("Chemin/paramètres typiques d’hameçonnage"); }
-
-    // look-alike de marque sur le DOMAINE du lien
-    const mentioned = Object.keys(brandDomains).filter(b => text.includes(b) || subj.includes(b));
-    for (const b of mentioned) {
-      const official = brandDomains[b].map(d => baseDomain(d));
-      const near     = official.some(d => d === bd || lev(d, bd) <= 2);
-      if (!near) {
-        score += 10; reasons.push(`Marque "${b}" citée mais lien vers ${bd}`);
-      }
+    const brandsMentioned = Object.keys(rules.brands).filter(b=>text.includes(b));
+    for(const b of brandsMentioned){
+      const officiels = rules.brands[b].map(d=>baseDomain(d));
+      const proche = officiels.some(d=>d===base||lev(d,base)<=2);
+      if(!proche){score+=10;reasons.push(`Marque "${b}" citée mais domaine = ${base}`);}
     }
   }
 
-  // 3bis) Texte du lien ↔ domaine du href (si anchors fournis)
-  for (const a of (anchors || [])) {
-    const host = getHostname(a.href);
-    if (!host) continue;
-    const textDom = (a.text || "").toLowerCase().match(/([a-z0-9.-]+\.[a-z]{2,})/);
-    if (textDom) {
-      const textBase = baseDomain(textDom[1]);
-      const hrefBase = baseDomain(host);
-      if (textBase && hrefBase && textBase !== hrefBase) {
-        score += 10; reasons.push(`Texte du lien affiche ${textBase} → pointe vers ${hrefBase}`);
-      }
+  // --- 3) Pièces jointes ---
+  for (const file of attachments) {
+    const ext = (file.split(".").pop() || "").toLowerCase();
+    if (rules.attachments.dangerous.includes(ext)) {
+      score += 12; reasons.push(`Pièce jointe risquée : ${file}`);
     }
-    // bouton “ici / here” pointant hors marque officielle
-    if (CTA_RE.test(a.text || "") && !trusted.has(baseDomain(host))) {
-      score += 4; reasons.push(`CTA générique pointe vers ${baseDomain(host)}`);
+    if (hasDoubleExtension(file)) {
+      score += 10; reasons.push(`Double extension suspecte : ${file}`);
     }
   }
 
-  /* --- 4) Pièces jointes --- */
-  for (const file of (attachments || [])) {
-    const lower = (file || "").toLowerCase();
-    const ext   = lower.split(".").pop();
-    if (dangerousExt.has(ext)) {
-      score += 12; reasons.push(`Pièce jointe à risque: ${file}`);
-    }
-    if (hasDoubleExtension(lower)) {
-      score += 12; reasons.push(`Double extension suspecte: ${file}`);
-    }
-  }
-  // combo texte → “mot de passe” + archive jointe
-  if (CRED_RE.test(body) && (attachments || []).some(f => /\.zip|\.rar|\.7z/i.test(f || ""))) {
-    score += 6; reasons.push("Archive jointe + mention de mot de passe");
-  }
-
-  /* --- 5) Expéditeur --- */
+  // --- 4) Expéditeur ---
   try {
-    const [localPart="", domainRaw=""] = sndr.split("@");
-    const domain = (domainRaw||"").toLowerCase();
-    if (!domain) {
-      score += 5; reasons.push("Adresse expéditeur non analysable");
-    } else {
-      // a) incohérence locale
-      if (localPart && !domain.includes(localPart.slice(0,5))) {
-        score += 4; reasons.push("Incohérence nom local/domaine");
-      }
-      // b) nom d’affichage contient une marque mais domaine pas officiel
-      if (senderName) {
-        const n = normalize(senderName);
-        const mentioned = Object.keys(brandDomains).filter(b => n.includes(b));
-        if (mentioned.length) {
-          const bd = baseDomain(domain);
-          for (const b of mentioned) {
-            const official = brandDomains[b].map(d => baseDomain(d));
-            const near = official.some(d => d === bd || lev(d, bd) <= 2);
-            if (!near) {
-              score += 10; reasons.push(`Nom affiche la marque "${b}" mais domaine expéditeur = ${bd}`);
-            }
-          }
-        }
+    const domain = sndr.split("@")[1];
+    if (!domain) {score+=5;reasons.push("Expéditeur non analysable");}
+    const brandMentioned = Object.keys(rules.brands).find(b=>senderName?.toLowerCase().includes(b));
+    if (brandMentioned) {
+      const bd = baseDomain(domain);
+      const officiels = rules.brands[brandMentioned].map(d=>baseDomain(d));
+      if (!officiels.includes(bd)) {
+        score += 10;
+        reasons.push(`Nom affiche ${brandMentioned} mais domaine = ${bd}`);
       }
     }
-  } catch {
-    score += 5; reasons.push("Erreur analyse expéditeur");
+  } catch {score+=3;}
+
+  // --- 5) Anti faux positifs ---
+  const trusted = new Set(rules.trusted);
+  const allHttps = links.every(u => /^https:\/\//i.test(u));
+  if (links.length && allHttps && links.every(u => trusted.has(baseDomain(getHostname(u))))) {
+    score = Math.max(0, score - 8);
+    reasons.push("Liens vers domaines officiels (atténuation)");
   }
 
-  /* --- 6) Indices structurels / densité --- */
-  if (/\bform\b/i.test(body) || /<input\b/i.test(body)) {
-    score += 8; reasons.push("Formulaire détecté dans l’email");
-  }
-  const plainLen = (body || "").trim().length;
-  const linkCount = (links || []).length;
-  if (plainLen < 120 && linkCount >= 1) {
-    score += 6; reasons.push("Peu de texte mais présence de lien");
-  }
+  return { score: Math.min(100, Math.round(score)), reasons: Array.from(new Set(reasons)) };
+}
 
-  /* --- 7) Anti faux-positifs léger --- */
-  if (linkCount > 0 && !isNaN(score)) {
-    // tous les liens sont “trusted” et https → on baisse un peu
-    const allHttps = (links || []).every(u => /^https:\/\//i.test(u));
-    if (allHttps && linkList.length && linkList.every(u => trusted.has(baseDomain(getHostname(u))))) {
-      score = Math.max(0, score - 8);
-      reasons.push("Liens vers domaines officiels uniquement (atténuation)");
+/* ======================== Analyse légère (trusted senders) ======================== */
+/**
+ * Analyse rapide et partielle utilisée pour les expéditeurs de confiance.
+ * Objectif : détecter les signaux évidents sans appliquer toutes les règles.
+ */
+export async function lightCheckEmail({ body = "", links = [], attachments = [] }) {
+  let score = 0;
+  const reasons = [];
+
+  // 🔹 Vérification des liens
+  for (const url of links) {
+    if (!/^https:\/\//i.test(url)) {
+      score += 10;
+      reasons.push("Lien non sécurisé (HTTP)");
+    }
+    if (/bit\.ly|tinyurl\.com|t\.co|is\.gd|cutt\.ly|rebrand\.ly|rb\.gy|lnkd\.in|goo\.gl|ow\.ly/i.test(url)) {
+      score += 8;
+      reasons.push("Raccourcisseur d’URL détecté");
+    }
+    if (/\.(zip|rar|7z|exe|scr|bat|cmd|ps1|apk|iso|img|docm|xlsm|pptm)([\/?#:]|$)/i.test(url)) {
+      score += 10;
+      reasons.push("Lien vers un fichier potentiellement exécutable");
     }
   }
 
-  // Nettoyage raisons + clamp
-  const uniq = Array.from(new Set(reasons));
-  return { score: Math.min(100, Math.round(score)), reasons: uniq };
+  // 🔹 Vérification du contenu du corps
+  if (/\b(mot de passe|password|identifiant|login|vérifiez|verify)\b/i.test(body)) {
+    score += 8;
+    reasons.push("Demande d'identifiants détectée");
+  }
+  if (/\burgent|urgence|immédiatement|immediatement|sans délai|asap\b/i.test(body)) {
+    score += 6;
+    reasons.push("Ton pressant ou urgence détecté");
+  }
+
+  // 🔹 Vérification des pièces jointes
+  for (const file of attachments) {
+    const lower = (file || "").toLowerCase();
+    if (/\.(exe|js|vbs|scr|bat|cmd|ps1|apk|zip|rar|7z|iso|img|docm|xlsm|pptm)$/i.test(lower)) {
+      score += 20;
+      reasons.push(`Pièce jointe potentiellement dangereuse : ${file}`);
+    }
+  }
+
+  // 🔹 Nettoyage / sortie
+  return {
+    score: Math.min(100, Math.round(score)),
+    reasons: Array.from(new Set(reasons))
+  };
 }

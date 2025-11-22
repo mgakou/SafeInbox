@@ -1,329 +1,254 @@
-// content_scripts/content.js
-// Analyse locale + bannière flottante avec auto-injection & resize iFrame
+// ==========================================================
+// 🛡️ SafeInbox – Content Script (Gmail)
+// Analyse locale + Trusted Senders + Bannière d’avertissement
+// ==========================================================
 
-import(chrome.runtime.getURL("utils/local_scanner.js"))
-  .then(({ analyzeEmail }) => {
-    console.log("[AntiPhish] content script loaded");
+(async () => {
+  try {
+    // 1️⃣ Charger les modules en parallèle
+    const [
+      { checkSenderTrusted, addIgnoredSender },
+      { analyzeEmail, loadRules, lightCheckEmail },
+    ] = await Promise.all([
+      import(chrome.runtime.getURL("utils/trusted.js")),
+      import(chrome.runtime.getURL("utils/local_scanner.js")),
+    ]);
 
-    // === Constantes DOM / Config ===
-    const GMAIL_SELECTOR = 'div[role="main"]';
-    const SUBJECT_SELECTOR = 'h2.hP';
-    const SENDER_SELECTOR  = '.gD';
-    const BODY_SELECTOR    = '.a3s';
-    const LINK_SELECTOR    = '.a3s a';
-    const ATTACHMENT_SELECTOR = '[download_url]';
-    const BANNER_ID = '#anti-phish-banner';
-    const DEFAULT_THRESHOLD = 40;
+    // 2️⃣ Charger les règles au démarrage
+    await loadRules();
+    console.log("[SafeInbox] Modules chargés (trusted + local_scanner)");
 
-    // === État ===
-    let threshold = DEFAULT_THRESHOLD;
-    let lastEmailData = null;
-    let lastHash = "";
-    const anchors = Array.from(document.querySelectorAll('.a3s a'))
-    .map(a => ({ href: a.href, text: (a.textContent || '').trim() }))
-    .slice(0, 50); // sécurité
-  
-    const senderName = document.querySelector('.gD')?.innerText || '';
-    return { subject, sender, senderName, body, links, attachments, anchors };
+    // 3️⃣ Initialiser SafeInbox
+    initSafeInbox({ checkSenderTrusted, addIgnoredSender, analyzeEmail, lightCheckEmail });
+  } catch (err) {
+    console.error("[SafeInbox] Échec du chargement des modules :", err);
+  }
+})();
 
-    // === Seuil depuis le popup ===
-    chrome.storage?.sync?.get({ threshold: DEFAULT_THRESHOLD }, ({ threshold: t }) => {
-      threshold = t;
-      console.log("[AntiPhish] threshold from storage =", threshold);
-    });
+// ==========================================================
+// ⚙️ Initialisation principale
+// ==========================================================
+function initSafeInbox({ checkSenderTrusted, addIgnoredSender, analyzeEmail, lightCheckEmail }) {
+  const GMAIL_SELECTOR = 'div[role="main"]';
+  const SUBJECT_SELECTOR = 'h2.hP';
+  const SENDER_SELECTOR = '.gD';
+  const SENDER_NAME_SELECTOR = '.gD';
+  const BODY_SELECTOR = '.a3s';
+  const LINK_SELECTOR = '.a3s a';
+  const ATTACHMENT_SELECTOR = '[download_url]';
+  const BANNER_ID = '#anti-phish-banner';
+  const DEFAULT_THRESHOLD = 40;
 
-    // === Utils ===
-    function debounce(fn, delay) {
-      let to;
-      return function (...args) {
-        clearTimeout(to);
-        to = setTimeout(() => fn.apply(this, args), delay);
-      };
+  // État interne
+  let threshold = DEFAULT_THRESHOLD;
+  let lastEmailData = null;
+  let lastHash = "";
+  let highlightsOn = false;
+
+  // Charger le seuil depuis storage
+  chrome.storage.sync.get({ threshold: DEFAULT_THRESHOLD }, ({ threshold: t }) => {
+    threshold = t;
+    console.log("[SafeInbox] Seuil initial =", threshold);
+  });
+
+  // ==========================================================
+  // 🧩 Helpers
+  // ==========================================================
+  const debounce = (fn, delay) => {
+    let to;
+    return (...args) => {
+      clearTimeout(to);
+      to = setTimeout(() => fn.apply(this, args), delay);
+    };
+  };
+
+  const waitForEmailReady = async (timeout = 4000) => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < timeout) {
+      const subj = document.querySelector(SUBJECT_SELECTOR);
+      const body = document.querySelector(BODY_SELECTOR);
+      const ready = subj && body && ((subj.innerText || "").trim().length + (body.innerText || "").trim().length > 5);
+      if (ready) return true;
+      await new Promise((r) => setTimeout(r, 100));
     }
+    return false;
+  };
 
-    async function waitForEmailReady(timeout = 4000) {
-      const t0 = performance.now();
-      while (performance.now() - t0 < timeout) {
-        const subj = document.querySelector(SUBJECT_SELECTOR);
-        const body = document.querySelector(BODY_SELECTOR);
-        const hasText = (subj?.innerText?.trim()?.length || 0) + (body?.innerText?.trim()?.length || 0) > 5;
-        if (subj && body && hasText) return true;
-        await new Promise(r => setTimeout(r, 100));
-      }
-      return false;
-    }
+  const computeHash = ({ subject = "", sender = "", body = "" }) => `${subject}||${sender}||${body.length}`;
 
-    function computeHash({ subject = "", sender = "", body = "" }) {
-      return `${subject}||${sender}||${body.length}`;
-    }
-
-    // === Extraction DOM ===
-    function extractEmailData() {
-      try {
-        const subject = document.querySelector(SUBJECT_SELECTOR)?.innerText || "";
-        const sender  = document.querySelector(SENDER_SELECTOR)?.getAttribute("email") || "";
-        const body    = document.querySelector(BODY_SELECTOR)?.innerText || "";
-        const links   = Array.from(document.querySelectorAll(LINK_SELECTOR)).map(a => a.href);
-        const attachments = Array.from(document.querySelectorAll(ATTACHMENT_SELECTOR)).map(el =>
-          el.getAttribute("download_url")?.split(":").pop()
-        );
-        if (!subject && !body) return null;
-        return { subject, sender, body, links, attachments };
-      } catch (err) {
-        console.warn("[AntiPhish] extract error:", err);
-        return null;
-      }
-    }
-
-    // === Bannière flottante (iFrame) ===
-    function injectAlertBanner(scoreDetails, emailData) {
-      if (document.querySelector(BANNER_ID)) return;
-
-      const iframe = document.createElement("iframe");
-      iframe.id  = "anti-phish-banner";
-      iframe.src = chrome.runtime.getURL("ui/warning_banner.html");
-      iframe.style.cssText = `
-        position: fixed;
-        inset: auto 0 0 auto;     /* bottom:0; right:0 */
-        display: block;
-        vertical-align: bottom;
-        margin: 0; padding: 0;
-        width: 300px;             /* largeur alignée avec .wrap */
-        height: 56px;             /* hauteur d'entête; sera ajustée via postMessage */
-        border: 0;
-        background: transparent;
-        z-index: 2147483647;
-        pointer-events: auto;
-      `;
-      // Alternative avec safe-area (encoches) :
-      // iframe.style.right  = 'env(safe-area-inset-right, 0)';
-      // iframe.style.bottom = 'env(safe-area-inset-bottom, 0)';
-
-      document.body.appendChild(iframe);
-
-      iframe.onload = () => {
-        iframe.contentWindow?.postMessage(
-          { ...scoreDetails, sender: emailData?.sender || "" },
-          "*"
-        );
-      };
-    }
-
-    function upsertBanner(scoreDetails, emailData) {
-      const frame = document.getElementById("anti-phish-banner");
-      if (frame?.contentWindow) {
-        frame.contentWindow.postMessage(
-          { ...scoreDetails, sender: emailData?.sender || "" },
-          "*"
-        );
-      } else {
-        injectAlertBanner(scoreDetails, emailData);
-      }
-    }
-
-    function removeBannerIfAny() {
-      const existing = document.querySelector(BANNER_ID);
-      if (existing) existing.remove();
-    }
-
-    // === Ignore expéditeur ===
-    async function shouldIgnoreSender(sender) {
-      return new Promise(resolve => {
-        chrome.storage.sync.get({ ignoredSenders: [] }, ({ ignoredSenders }) => {
-          resolve(ignoredSenders.includes((sender || "").toLowerCase()));
-        });
-      });
-    }
-    function addIgnoredSender(sender) {
-      chrome.storage.sync.get({ ignoredSenders: [] }, ({ ignoredSenders }) => {
-        const set = new Set(ignoredSenders);
-        set.add((sender || "").toLowerCase());
-        chrome.storage.sync.set({ ignoredSenders: Array.from(set) });
-      });
-    }
-
-    // === Surbrillance prudente ===
-    let highlightsOn = false;
-    function highlightRisks({ body }) {
-      const root = document.querySelector(".a3s");
-      if (!root) return;
-      unhighlightRisks();
-
-      // Liens suspects
-      root.querySelectorAll('a[href]').forEach(a => {
-        if (/bit\.ly|tinyurl\.com|t\.co|is\.gd|cutt\.ly|rebrand\.ly|\.tk|\.ml|\.ga|\.cf|\.gq|\.xyz|\.top|\.zip|\.mov/i.test(a.href)) {
-          a.style.outline = "2px solid #d32f2f";
-          a.dataset.apMarked = "1";
-          a.title = (a.title || "") + " [Lien suspect]";
-        }
-      });
-
-      // Mots/phrases à risque
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-      const riskyRe = /\b(urgent|urgence|immédiatement|immediatement|cliquez|cliquer|vérifiez|verifiez|compte\s*(bloqué|bloque|suspendu))\b/gi;
-      const extRe   = /\b[\w.-]+\.(exe|js|vbs|scr|bat|cmd|ps1|apk|html?|hta|zip|rar|7z)\b/gi;
-      const nodes = [];
-      while (walker.nextNode()) nodes.push(walker.currentNode);
-
-      nodes.forEach(node => {
-        const txt = node.nodeValue;
-        if (!txt) return;
-        if (!riskyRe.test(txt) && !extRe.test(txt)) return;
-        const span = document.createElement("span");
-        span.style.background    = "rgba(243, 156, 18, 0.35)";
-        span.style.padding       = "0 2px";
-        span.style.borderRadius  = "2px";
-        span.dataset.apMarked    = "1";
-        span.textContent         = txt;
-        node.parentNode.replaceChild(span, node);
-      });
-      highlightsOn = true;
-    }
-    function unhighlightRisks() {
-      const root = document.querySelector(".a3s");
-      if (!root) return;
-      root.querySelectorAll('[data-ap-marked="1"]').forEach(el => {
-        if (el.tagName === "A") {
-          el.style.outline = "";
-          el.removeAttribute("data-ap-marked");
-        } else if (el.firstChild && el.childNodes.length === 1 && el.firstChild.nodeType === Node.TEXT_NODE) {
-          el.replaceWith(el.firstChild);
-        } else {
-          el.style.background = "";
-          el.removeAttribute("data-ap-marked");
-        }
-      });
-      highlightsOn = false;
-    }
-
-    // === Callback d’analyse (fiable) ===
-    const handleDomChange = debounce(async () => {
-      const ready = await waitForEmailReady(4000);
-      if (!ready) {
-        removeBannerIfAny(); // si on est sur la liste -> aucune bannière
-        console.log("[AntiPhish] email not ready");
-        return;
-      }
-
-      const emailData = extractEmailData();
-      if (!emailData) {
-        removeBannerIfAny();
-        console.log("[AntiPhish] no emailData");
-        return;
-      }
-
-      const h = computeHash(emailData);
-      if (h === lastHash) return; // même thread; évite ré-analyses inutiles
-      lastHash = h;
-      lastEmailData = emailData;
-
-      if (await shouldIgnoreSender(emailData.sender)) {
-        removeBannerIfAny();
-        return;
-      }
-
-      const scoreDetails = analyzeEmail(emailData);
-      console.log("[AntiPhish] score=", scoreDetails.score, "threshold=", threshold);
-
-      if (scoreDetails.score >= threshold) {
-        upsertBanner(scoreDetails, emailData);
-      } else {
-        removeBannerIfAny();
-      }
-    }, 200);
-
-    // === Observer DOM + démarrage immédiat ===
-    const observer = new MutationObserver(() => handleDomChange());
-    function waitForGmailAndStart() {
-      const target = document.querySelector(GMAIL_SELECTOR);
-      if (target) {
-        observer.observe(target, { childList: true, subtree: true });
-        console.log("Gmail DOM observer initialized");
-        setTimeout(() => handleDomChange(), 80);
-      } else {
-        setTimeout(waitForGmailAndStart, 300);
-      }
-    }
-
-    // === Hook navigation SPA + capture clics sur threads ===
-    (function hookRouteChanges() {
-      const fire = () => setTimeout(() => {
-        observer.disconnect();
-        waitForGmailAndStart();
-      }, 100);
-
-      const wrap = (fn) => function (...args) {
-        const r = fn.apply(this, args);
-        window.dispatchEvent(new Event("locationchange"));
-        return r;
-      };
-
-      history.pushState    = wrap(history.pushState);
-      history.replaceState = wrap(history.replaceState);
-      window.addEventListener("popstate", () =>
-        window.dispatchEvent(new Event("locationchange"))
+  async function shouldIgnoreSender(sender) {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get({ ignoredSenders: [] }, ({ ignoredSenders }) =>
+        resolve(ignoredSenders.includes((sender || "").toLowerCase()))
       );
-      window.addEventListener("locationchange", fire);
+    });
+  }
 
-      // Capture des clics sur la liste des mails (déclenche l'analyse plus tôt)
-      document.addEventListener("click", (e) => {
-        if (e.target.closest?.('tr.zA, div.Cp tr, .UI [role="listitem"]')) {
-          setTimeout(() => handleDomChange(), 150);
-        }
-      }, true);
-    })();
+  // ==========================================================
+  // ✉️ Extraction des données du mail
+  // ==========================================================
+  function extractEmailData() {
+    try {
+      const subject = document.querySelector(SUBJECT_SELECTOR)?.innerText || "";
+      const sender = document.querySelector(SENDER_SELECTOR)?.getAttribute("email") || "";
+      const senderName = document.querySelector(SENDER_NAME_SELECTOR)?.textContent?.trim() || "";
+      const body = document.querySelector(BODY_SELECTOR)?.innerText || "";
+      const links = Array.from(document.querySelectorAll(LINK_SELECTOR)).map((a) => a.href);
+      const anchors = Array.from(document.querySelectorAll(LINK_SELECTOR)).map((a) => ({ href: a.href, text: a.textContent || "" }));
+      const attachments = Array.from(document.querySelectorAll(ATTACHMENT_SELECTOR)).map((el) =>
+        el.getAttribute("download_url")?.split(":").pop()
+      );
 
-    // === Messages depuis la bannière (iFrame) ===
-    if (!window.__antiPhishUXListener) {
-      window.addEventListener("message", async (evt) => {
-        // Resize demandé par l'iframe pour coller au bas (pas de scroll interne)
-        if (evt.data && evt.data.type === "apBannerResize") {
-          const frame = document.getElementById("anti-phish-banner");
-          if (frame) {
-            frame.style.height = Math.ceil(evt.data.height) + "px";
-          }
-        }
+      if (!subject && !body) return null;
+      return { subject, sender, senderName, body, links, attachments, anchors };
+    } catch (e) {
+      console.warn("[SafeInbox] ⚠️ Erreur extraction :", e);
+      return null;
+    }
+  }
 
-        if (evt.data === "manualAnalyze") {
-          const data = extractEmailData();
-          if (!data) return;
-          lastEmailData = data;
-          const details = analyzeEmail(data);
-          const frame = document.getElementById("anti-phish-banner");
-          if (frame?.contentWindow) {
-            frame.contentWindow.postMessage(
-              { ...details, sender: data.sender || "" },
-              "*"
-            );
-          }
-        }
+  // ==========================================================
+  // 🚨 Bannière d’alerte
+  // ==========================================================
+  function injectBanner(scoreDetails, emailData) {
+    const iframe = document.createElement("iframe");
+    iframe.id = "anti-phish-banner";
+    iframe.src = chrome.runtime.getURL("ui/warning_banner.html");
+    iframe.style.cssText = `
+      position: fixed;
+      inset: auto 0 0 auto;
+      width: 320px;
+      height: 56px;
+      border: 0;
+      background: transparent;
+      z-index: 2147483647;
+      pointer-events: auto;
+    `;
+    document.body.appendChild(iframe);
 
-        if (evt.data === "toggleHighlights") {
-          if (!lastEmailData) return;
-          highlightsOn ? unhighlightRisks() : highlightRisks(lastEmailData);
-        }
+    iframe.onload = () =>
+      iframe.contentWindow?.postMessage({ ...scoreDetails, sender: emailData?.sender || "" }, "*");
+  }
 
-        if (evt.data === "dismissBanner") {
-          removeBannerIfAny();
-          unhighlightRisks();
-        }
+  function upsertBanner(scoreDetails, emailData) {
+    const frame = document.getElementById("anti-phish-banner");
+    if (frame?.contentWindow)
+      frame.contentWindow.postMessage({ ...scoreDetails, sender: emailData?.sender || "" }, "*");
+    else injectBanner(scoreDetails, emailData);
+  }
 
-        if (evt.data && evt.data.type === "ignoreSender") {
-          addIgnoredSender(evt.data.sender || lastEmailData?.sender || "");
-          removeBannerIfAny();
-          unhighlightRisks();
-          console.log("[AntiPhish] Sender ignored:", evt.data.sender);
-        }
+  const removeBanner = () => document.querySelector(BANNER_ID)?.remove();
 
-        if (evt.data === "deepScanRequest") {
-          // Pas de backend pour le moment
-          console.log("[AntiPhish] Deep scan clicked (no backend configured)");
-        }
-      });
-      window.__antiPhishUXListener = true;
+  // ==========================================================
+  // 🧠 Analyse principale
+  // ==========================================================
+  const handleDomChange = debounce(async () => {
+    if (!(await waitForEmailReady())) return removeBanner();
+
+    const emailData = extractEmailData();
+    if (!emailData) return removeBanner();
+
+    const h = computeHash(emailData);
+    if (h === lastHash) return; // évite les re-analyses inutiles
+    lastHash = h;
+    lastEmailData = emailData;
+
+    // Vérifie si l'expéditeur est ignoré
+    if (await shouldIgnoreSender(emailData.sender)) return removeBanner();
+
+    // Vérifie si expéditeur est de confiance
+    const trust = await checkSenderTrusted(emailData.sender);
+    if (trust.trusted) {
+      console.log(`[SafeInbox] Expéditeur de confiance (${trust.level} - ${trust.source})`);
+      const light = typeof lightCheckEmail === "function"
+        ? await lightCheckEmail(emailData)
+        : { score: 0 };
+      if (light.score >= threshold) upsertBanner(light, emailData);
+      else removeBanner();
+      return;
     }
 
-    // === Go ===
-    waitForGmailAndStart();
-  })
-  .catch(err => console.error("Failed to load local_scanner.js", err));
+    // Analyse complète
+    const scoreDetails = await analyzeEmail(emailData);
+    console.log(`[SafeInbox] Score obtenu : ${scoreDetails.score} / seuil ${threshold}`);
+    if (scoreDetails.score >= threshold) upsertBanner(scoreDetails, emailData);
+    else removeBanner();
+  }, 250);
+
+  // ==========================================================
+  // 👂 Listener des messages de la bannière (iframe UI)
+  // ==========================================================
+  window.addEventListener("message", async (evt) => {
+    const data = evt.data;
+    if (!data) return;
+
+    // a) Analyse manuelle
+    if (data === "manualAnalyze") {
+      const fresh = extractEmailData();
+      if (!fresh) return;
+      const details = await analyzeEmail(fresh);
+      const frame = document.getElementById("anti-phish-banner");
+      frame?.contentWindow?.postMessage({ ...details, sender: fresh.sender || "" }, "*");
+    }
+
+    // b) Toggle surlignage
+    if (data === "toggleHighlights") {
+      highlightsOn = !highlightsOn;
+      console.log(`[SafeInbox] Surlignage ${highlightsOn ? "activé" : "désactivé"}`);
+    }
+
+    // c) Fermer la bannière
+    if (data === "dismissBanner") {
+      removeBanner();
+    }
+
+    // d) Ignorer un expéditeur
+    if (data.type === "ignoreSender") {
+      const toIgnore = (data.sender || lastEmailData?.sender || "").toLowerCase();
+      if (toIgnore) {
+        addIgnoredSender(toIgnore);
+        console.log("[SafeInbox] ✳️ Expéditeur ajouté à la liste d’ignore :", toIgnore);
+      }
+      removeBanner();
+    }
+
+    // e) Deep scan (à venir)
+    if (data === "deepScanRequest") {
+      console.log("[SafeInbox] Deep scan déclenché (backend à venir)");
+    }
+  });
+
+  // ==========================================================
+  //  Réception des mises à jour depuis le popup
+  // ==========================================================
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "thresholdUpdated") {
+      threshold = msg.newThreshold;
+      console.log(`[SafeInbox]  Seuil mis à jour via popup : ${threshold}`);
+      handleDomChange();
+    }
+
+    if (msg.type === "ignoreListUpdated") {
+      console.log("[SafeInbox]  Liste ignorée mise à jour → relance de l'analyse");
+      handleDomChange();
+    }
+  });
+
+  // ==========================================================
+  // 🕵️‍♂️ Observer Gmail DOM
+  // ==========================================================
+  const observer = new MutationObserver(() => handleDomChange());
+  const startObserver = () => {
+    const t = document.querySelector(GMAIL_SELECTOR);
+    if (t) {
+      observer.observe(t, { childList: true, subtree: true });
+      setTimeout(handleDomChange, 150);
+      console.log("[SafeInbox] 👀 Gmail DOM observer initialisé");
+    } else setTimeout(startObserver, 300);
+  };
+
+  // ==========================================================
+  // 🚀 Démarrage
+  // ==========================================================
+  startObserver();
+}
