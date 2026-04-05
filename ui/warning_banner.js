@@ -26,21 +26,34 @@
   // --- Ouverture/fermeture du panneau avec animation + resize ---
   function slidePanel(open) {
     panelOpen = open;
-    const full = panel.scrollHeight;
-
+  
     if (open) {
       root.classList.add('open');
+      panel.style.maxHeight = 'none';
+      const full = panel.scrollHeight;
+      panel.style.maxHeight = '0px';
+      void panel.offsetHeight;
       panel.style.maxHeight = full + 'px';
+      setTimeout(sendResize, 330);
     } else {
       panel.style.maxHeight = panel.scrollHeight + 'px';
-      void panel.offsetHeight;               // reflow
+      void panel.offsetHeight;
       panel.style.maxHeight = '0px';
-      setTimeout(() => root.classList.remove('open'), 320);
+      setTimeout(() => {
+        root.classList.remove('open');
+        // Hauteur fixe de la barre fermée — pas de recalcul dynamique
+        window.parent.postMessage({ type: 'apBannerResize', height: 56 }, '*');
+      }, 330);
     }
+  
     bar.setAttribute('aria-expanded', String(open));
-    setTimeout(sendResize, 10);               // ajuste l'iframe après transition
   }
-
+// Clic sur le panneau lui-même (fond) → ferme
+panel.addEventListener('click', (e) => {
+  // Ne pas intercepter les clics sur les boutons
+  if (e.target.closest('.btn')) return;
+  slidePanel(false);
+});
   // --- Anneau de score ---
   const r = 18;
   const C = 2 * Math.PI * r;

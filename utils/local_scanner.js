@@ -120,8 +120,35 @@ export async function analyzeEmail({ subject="", sender="", body="", links=[], a
       }
     }
   } catch {score+=3;}
+  // --- 5) Mismatch ancre / URL ---
+    for (const anchor of anchors) {
+      const displayText = normalize(anchor.text || '');
+      const targetHost  = getHostname(anchor.href || '');
+      const targetBase  = baseDomain(targetHost);
 
-  // --- 5) Anti faux positifs ---
+      if (!targetHost || !displayText) continue;
+
+      // Cas 1 : texte affiche une marque connue mais lien ≠ domaine officiel
+      for (const brand of Object.keys(rules.brands)) {
+        if (!displayText.includes(brand)) continue;
+        const officialBases = rules.brands[brand].map(d => baseDomain(d));
+        if (!officialBases.includes(targetBase)) {
+          score += 15;
+          reasons.push(`Ancre trompeuse : texte "${brand}" → domaine ${targetBase}`);
+        }
+      }
+
+      // Cas 2 : texte contient une URL visible différente de l'URL réelle
+      const urlInText = (anchor.text || '').match(/https?:\/\/[\w.-]+/)?.[0];
+      if (urlInText) {
+        const displayedHost = getHostname(urlInText);
+        if (displayedHost && displayedHost !== targetHost) {
+          score += 12;
+          reasons.push(`URL affichée (${displayedHost}) ≠ URL réelle (${targetHost})`);
+        }
+      }
+  }
+  // --- 6) Anti faux positifs ---
   const trusted = new Set(rules.trusted);
   const allHttps = links.every(u => /^https:\/\//i.test(u));
   if (links.length && allHttps && links.every(u => trusted.has(baseDomain(getHostname(u))))) {

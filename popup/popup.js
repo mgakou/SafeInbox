@@ -12,11 +12,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const arrow = document.getElementById("arrow");
     const ignoredList = document.getElementById("ignored-list");
     const clearBtn = document.getElementById("clear-list");
+    const exportLogsBtn = document.getElementById("export-logs-btn");
+    const exportStatus = document.getElementById("export-status");
   
-    // === Import du module utils/trusted.js ===
-    const { removeIgnoredSender } = await import(
-      chrome.runtime.getURL("utils/trusted.js")
-    );
+    // === Import des modules utilitaires ===
+    const [{ removeIgnoredSender }, { buildExportPayload }] = await Promise.all([
+      import(chrome.runtime.getURL("utils/trusted.js")),
+      import(chrome.runtime.getURL("utils/logger.js")),
+    ]);
   
     /* ======================================================
        ⚙️ 1. Gestion du seuil d'analyse
@@ -76,6 +79,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         await renderIgnored();
       }
     };
+
+    const downloadJson = (filename, data) => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+
+    const exportLogs = async () => {
+      try {
+        const payload = await buildExportPayload();
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const filename = `safeinbox-analysis-logs-${stamp}.json`;
+        downloadJson(filename, payload);
+        exportStatus.textContent = `Export réussi (${payload.total} entrées) ✅`;
+        exportStatus.style.color = "#4CAF50";
+      } catch (err) {
+        console.error("[SafeInbox][Popup] Erreur export logs:", err);
+        exportStatus.textContent = "Erreur lors de l'export ❌";
+        exportStatus.style.color = "#d9534f";
+      } finally {
+        setTimeout(() => {
+          exportStatus.textContent = "";
+        }, 2500);
+      }
+    };
   
     /* ======================================================
        📁 3. Gestion du repli / dépli
@@ -93,6 +129,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   
     saveBtn.addEventListener("click", saveThreshold);
     clearBtn.addEventListener("click", clearIgnored);
+    exportLogsBtn?.addEventListener("click", exportLogs);
   });
   
   /* ======================================================

@@ -1,0 +1,153 @@
+[
+    {
+      "id": "L01",
+      "kind": "legit",
+      "from_name": "Équipe SafeInbox Test",
+      "from_email": "no-reply@safeinbox-test.example",
+      "subject": "[TEST] Bienvenue — votre environnement de test est prêt",
+      "body_text": "Bonjour,\n\nCeci est un email de test légitime pour valider SafeInbox.\nAucune action requise.\n\nRéférence: SI-ENV-1042\n\nMerci,\nSafeInbox Test\n",
+      "body_html": "<p>Bonjour,</p><p>Ceci est un email de test <b>légitime</b> pour valider SafeInbox.<br/>Aucune action requise.</p><p>Référence: <code>SI-ENV-1042</code></p><p>Merci,<br/>SafeInbox Test</p>",
+      "links": ["https://safeinbox-test.example/status"]
+    },
+    {
+      "id": "L02",
+      "kind": "legit",
+      "from_name": "Support Facturation (Test)",
+      "from_email": "billing@invoices-lab.example",
+      "subject": "[TEST] Reçu de paiement #INV-2026-0148",
+      "body_text": "Bonjour,\n\nVotre reçu de paiement (simulation) est disponible.\nMontant: 29,90 EUR\nRéférence: INV-2026-0148\n\nConsulter le reçu: https://invoices-lab.example/receipts/INV-2026-0148\n\nCordialement,\nSupport Facturation (Test)\n",
+      "body_html": "<p>Bonjour,</p><p>Votre reçu de paiement (simulation) est disponible.</p><ul><li>Montant: 29,90 EUR</li><li>Référence: <b>INV-2026-0148</b></li></ul><p><a href=\"https://invoices-lab.example/receipts/INV-2026-0148\">Consulter le reçu</a></p><p>Cordialement,<br/>Support Facturation (Test)</p>",
+      "links": ["https://invoices-lab.example/receipts/INV-2026-0148"]
+    },
+    {
+      "id": "L03",
+      "kind": "legit",
+      "from_name": "Notifications RH (Test)",
+      "from_email": "hr-notify@company-lab.example",
+      "subject": "[TEST] Rappel: document à signer (aucune urgence)",
+      "body_text": "Bonjour,\n\nPetit rappel (test): un document interne est prêt.\nVous pouvez le consulter quand vous êtes disponible.\n\nLien: https://company-lab.example/hr/docs/ready\n\nBonne journée,\nRH (Test)\n",
+      "body_html": "<p>Bonjour,</p><p>Petit rappel (test): un document interne est prêt. Vous pouvez le consulter quand vous êtes disponible.</p><p><a href=\"https://company-lab.example/hr/docs/ready\">Ouvrir le document</a></p><p>Bonne journée,<br/>RH (Test)</p>",
+      "links": ["https://company-lab.example/hr/docs/ready"]
+    },
+    {
+      "id": "L04",
+      "kind": "legit",
+      "from_name": "Equipe IT — Monitoring (Test)",
+      "from_email": "it-monitor@lab.example",
+      "subject": "[TEST] Rapport hebdomadaire — disponibilité services",
+      "body_text": "Bonjour,\n\nRapport test:\n- Disponibilité: 99.98%\n- Incidents: 0 critique\n\nDashboard: https://lab.example/monitoring/weekly\n\nIT Monitoring (Test)\n",
+      "body_html": "<p>Bonjour,</p><p>Rapport test:</p><ul><li>Disponibilité: 99.98%</li><li>Incidents: 0 critique</li></ul><p><a href=\"https://lab.example/monitoring/weekly\">Ouvrir le dashboard</a></p><p>IT Monitoring (Test)</p>",
+      "links": ["https://lab.example/monitoring/weekly"]
+    },
+    {
+      "id": "L05",
+      "kind": "legit",
+      "from_name": "Info Newsletter (Test)",
+      "from_email": "newsletter@updates-lab.example",
+      "subject": "[TEST] Votre récapitulatif mensuel (lecture seule)",
+      "body_text": "Bonjour,\n\nVoici votre récapitulatif mensuel (test). Cet email est informatif.\n\nAccéder au récap: https://updates-lab.example/monthly\n\nMerci,\nNewsletter (Test)\n",
+      "body_html": "<p>Bonjour,</p><p>Voici votre récapitulatif mensuel (test). Cet email est informatif.</p><p><a href=\"https://updates-lab.example/monthly\">Accéder au récap</a></p><p>Merci,<br/>Newsletter (Test)</p>",
+      "links": ["https://updates-lab.example/monthly"]
+    },
+    {
+      "id": "L06",
+      "kind": "legit",
+      "from_name": "Portail Rendez-vous (Test)",
+      "from_email": "no-reply@appointments-lab.example",
+      "subject": "[TEST] Confirmation de rendez-vous — 14/03 à 10:30",
+      "body_text": "Bonjour,\n\nVotre rendez-vous (simulation) est confirmé.\nDate: 14/03 — 10:30\nLieu: En ligne\n\nGérer: https://appointments-lab.example/manage/ABCD1234\n\nCeci est un email de test.\n",
+      "body_html": "<p>Bonjour,</p><p>Votre rendez-vous (simulation) est confirmé.</p><ul><li>Date: 14/03 — 10:30</li><li>Lieu: En ligne</li></ul><p><a href=\"https://appointments-lab.example/manage/ABCD1234\">Gérer</a></p><p><i>Ceci est un email de test.</i></p>",
+      "links": ["https://appointments-lab.example/manage/ABCD1234"]
+    },
+    {
+      "id": "L07",
+      "kind": "legit",
+      "from_name": "Admin Sécurité (Test)",
+      "from_email": "security-admin@safeinbox-test.example",
+      "subject": "[TEST] Alerte de connexion — vérification informative",
+      "body_text": "Bonjour,\n\nConnexion (test) détectée.\nIP: 203.0.113.10\nNavigateur: Chrome\n\nSi ce n'est pas vous, ignorez cet email (test). Aucune action requise.\nDétails: https://safeinbox-test.example/security/logs\n",
+      "body_html": "<p>Bonjour,</p><p>Connexion (test) détectée.</p><ul><li>IP: 203.0.113.10</li><li>Navigateur: Chrome</li></ul><p>Aucune action requise.</p><p><a href=\"https://safeinbox-test.example/security/logs\">Voir les détails</a></p>",
+      "links": ["https://safeinbox-test.example/security/logs"]
+    },
+  
+    {
+      "id": "S01",
+      "kind": "suspicious",
+      "from_name": "Service Paiement (Simulation)",
+      "from_email": "payments@secure-update.example",
+      "subject": "[TEST - SIMU] Paiement en attente — action requise",
+      "body_text": "Bonjour,\n\n[SIMULATION] Un paiement est indiqué comme “en attente”.\nMotifs possibles: informations manquantes.\n\nPour vérifier (simulation): http://secure-update.example/login?ref=pay_1042\n\nSi vous ne comprenez pas cet email, ignorez-le (test).\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Un paiement est indiqué comme “en attente”.</p><p>Pour vérifier (simulation): <a href=\"http://secure-update.example/login?ref=pay_1042\">Ouvrir le portail</a></p><p><i>Si vous ne comprenez pas cet email, ignorez-le (test).</i></p>",
+      "links": ["http://secure-update.example/login?ref=pay_1042"]
+    },
+    {
+      "id": "S02",
+      "kind": "suspicious",
+      "from_name": "Centre de Support (Simulation)",
+      "from_email": "support@tinyurl.test",
+      "subject": "[TEST - SIMU] URGENT!!! Vérification nécessaire",
+      "body_text": "Bonjour,\n\n[SIMULATION] Votre session nécessite une vérification.\n\nLien (raccourci simulé): https://tinyurl.test/verify-session\n\nMerci,\nSupport (Test)\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Votre session nécessite une vérification.</p><p>Lien (raccourci simulé): <a href=\"https://tinyurl.test/verify-session\">https://tinyurl.test/verify-session</a></p><p>Merci,<br/>Support (Test)</p>",
+      "links": ["https://tinyurl.test/verify-session"]
+    },
+    {
+      "id": "S03",
+      "kind": "suspicious",
+      "from_name": "Compte Sécurité (Simu)",
+      "from_email": "alert@security-check.example",
+      "subject": "[TEST - SIMU] Confirmez votre compte",
+      "body_text": "Bonjour,\n\n[SIMULATION] Nous avons détecté une tentative de connexion.\nConfirmez votre compte (test): https://security-check.example/confirm?token=ab12\n\nCeci est un exercice.\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Tentative de connexion détectée.</p><p><a href=\"https://security-check.example/confirm?token=ab12\">Confirmer (test)</a></p><p><i>Ceci est un exercice.</i></p>",
+      "links": ["https://security-check.example/confirm?token=ab12"]
+    },
+    {
+      "id": "S04",
+      "kind": "suspicious",
+      "from_name": "Remboursement (Simulation)",
+      "from_email": "no-reply@refund-center.example",
+      "subject": "[TEST - SIMU] Remboursement disponible (référence #RB-771)",
+      "body_text": "Bonjour,\n\n[SIMULATION] Un remboursement est prêt.\nRéférence: RB-771\n\nConsulter (test): https://refund-center.example/claim?ref=RB-771\n\nIgnorez si non concerné.\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Un remboursement est prêt.</p><p>Référence: <b>RB-771</b></p><p><a href=\"https://refund-center.example/claim?ref=RB-771\">Consulter (test)</a></p>",
+      "links": ["https://refund-center.example/claim?ref=RB-771"]
+    },
+    {
+      "id": "S05",
+      "kind": "suspicious",
+      "from_name": "Support Vérification (Simu)",
+      "from_email": "verify@account-portal.example",
+      "subject": "[TEST - SIMU] Mise à jour requise: mot de passe",
+      "body_text": "Bonjour,\n\n[SIMULATION] Une mise à jour de sécurité est requise.\n\nPortail (test): https://account-portal.example/password/reset\n\n— Ceci est un mail de simulation —\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Une mise à jour de sécurité est requise.</p><p><a href=\"https://account-portal.example/password/reset\">Réinitialiser (test)</a></p><p><i>— Ceci est un mail de simulation —</i></p>",
+      "links": ["https://account-portal.example/password/reset"]
+    },
+    {
+      "id": "S06",
+      "kind": "suspicious",
+      "from_name": "Document Partagé (Simu)",
+      "from_email": "share@docs-lab.example",
+      "subject": "[TEST - SIMU] Document partagé: \"Facture\"",
+      "body_text": "Bonjour,\n\n[SIMULATION] Un document a été partagé avec vous: \"Facture\".\nOuvrir (test): https://docs-lab.example/open?file=facture\n\nNote: exercice SafeInbox.\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Un document a été partagé: <b>\"Facture\"</b>.</p><p><a href=\"https://docs-lab.example/open?file=facture\">Ouvrir (test)</a></p><p><i>Note: exercice SafeInbox.</i></p>",
+      "links": ["https://docs-lab.example/open?file=facture"]
+    },
+    {
+      "id": "S07",
+      "kind": "suspicious",
+      "from_name": "Support Technique (Simu)",
+      "from_email": "it-helpdesk@lab.example",
+      "subject": "[TEST - SIMU] Votre compte est suspendu",
+      "body_text": "Bonjour,\n\n[SIMULATION] Votre compte est marqué “suspendu”.\nPour vérifier (test): https://lab.example/secure/login\n\nImportant: ceci est un test.\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Votre compte est marqué “suspendu”.</p><p><a href=\"https://lab.example/secure/login\">Vérifier (test)</a></p><p><i>Important: ceci est un test.</i></p>",
+      "links": ["https://lab.example/secure/login"]
+    },
+    {
+      "id": "S08",
+      "kind": "suspicious",
+      "from_name": "Facturation (Simu)",
+      "from_email": "billing@sub.verify.account.example",
+      "subject": "[TEST - SIMU] Paiement — confirmation",
+      "body_text": "Bonjour,\n\n[SIMULATION] Confirmation demandée.\nLien (test): https://sub.verify.account.example/confirm?mode=pay\n\nCeci est un test SafeInbox.\n",
+      "body_html": "<p>Bonjour,</p><p><b>[SIMULATION]</b> Confirmation demandée.</p><p><a href=\"https://sub.verify.account.example/confirm?mode=pay\">Confirmer (test)</a></p><p><i>Ceci est un test SafeInbox.</i></p>",
+      "links": ["https://sub.verify.account.example/confirm?mode=pay"]
+    }
+  ]

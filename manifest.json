@@ -16,7 +16,10 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "test_harness.html", 
+        "test_harness.js",
         "utils/local_scanner.js",
+        "utils/logger.js",
         "utils/rules.json",
         "utils/trusted_senders.json",
         "utils/trusted.js",

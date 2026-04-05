@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>SafeInbox — Test Harness</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0c0e13; --surface: #13161e; --surface2: #1b1f2b; --border: #252a38;
+      --fg: #d4daf5; --muted: #5a6180; --accent: #4f9eff;
+      --ok: #2ed573; --warn: #ffa040; --bad: #ff4757;
+      --badge-ok: rgba(46,213,115,.12); --badge-warn: rgba(255,160,64,.12); --badge-bad: rgba(255,71,87,.12);
+      --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--fg); font-family: var(--sans); min-height: 100vh; padding: 32px; }
+
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 36px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #4f9eff 0%, #2ed573 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .subtitle { color: var(--muted); font-size: 12px; font-family: var(--mono); margin-top: 2px; }
+    .run-all-btn { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 10px 22px; font-family: var(--sans); font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .run-all-btn:hover { opacity: .85; }
+    .run-all-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
+    .stat-label { font-size: 11px; color: var(--muted); font-family: var(--mono); text-transform: uppercase; letter-spacing: .8px; }
+    .stat-value { font-size: 28px; font-weight: 800; margin-top: 4px; }
+    .stat-value.ok { color: var(--ok); } .stat-value.bad { color: var(--bad); } .stat-value.warn { color: var(--warn); }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; width: fit-content; }
+    .tab { padding: 8px 18px; border-radius: 9px; border: none; background: transparent; color: var(--muted); font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .tab.active { background: var(--surface2); color: var(--fg); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { border-bottom: 1px solid var(--border); }
+    th { text-align: left; padding: 10px 14px; font-size: 11px; color: var(--muted); font-family: var(--mono); text-transform: uppercase; letter-spacing: .7px; font-weight: 600; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:hover { background: var(--surface); }
+    td { padding: 12px 14px; font-size: 13px; vertical-align: top; }
+
+    .score-pill { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-family: var(--mono); font-size: 13px; font-weight: 700; }
+    .score-pill.ok { background: var(--badge-ok); color: var(--ok); }
+    .score-pill.warn { background: var(--badge-warn); color: var(--warn); }
+    .score-pill.bad { background: var(--badge-bad); color: var(--bad); }
+
+    .verdict { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px; font-family: var(--mono); font-weight: 700; text-transform: uppercase; }
+    .verdict.pass { background: var(--badge-ok); color: var(--ok); }
+    .verdict.fail { background: var(--badge-bad); color: var(--bad); }
+    .verdict.warn { background: var(--badge-warn); color: var(--warn); }
+
+    .reasons-list { display: flex; flex-wrap: wrap; gap: 4px; max-width: 380px; }
+    .reason-chip { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: 11px; font-family: var(--mono); padding: 2px 7px; border-radius: 5px; }
+    .reason-chip.flagged { border-color: rgba(255,71,87,.3); color: var(--bad); background: var(--badge-bad); }
+
+    .loading-row td { color: var(--muted); font-family: var(--mono); font-size: 12px; padding: 24px; text-align: center; }
+
+    .manual-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; display: none; }
+    .manual-panel.active { display: block; }
+    .manual-panel h2 { font-size: 16px; font-weight: 700; margin-bottom: 18px; color: var(--accent); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .7px; }
+    input, textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--fg); font-family: var(--mono); font-size: 13px; padding: 10px 12px; outline: none; resize: vertical; transition: border-color .15s; }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    textarea { min-height: 90px; }
+    .run-manual-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; color: var(--fg); font-family: var(--sans); font-size: 13px; font-weight: 600; padding: 10px 20px; cursor: pointer; transition: all .15s; }
+    .run-manual-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .manual-result { margin-top: 18px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: none; font-family: var(--mono); font-size: 13px; }
+    .manual-result.show { display: block; }
+    .manual-result .score-line { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+
+    .suite-panel { display: block; }
+    .suite-panel.hidden { display: none; }
+    .case-name { font-weight: 600; }
+    .case-meta { color: var(--muted); font-size: 11px; font-family: var(--mono); margin-top: 2px; }
+
+    .progress-bar { height: 3px; background: var(--border); border-radius: 3px; margin-bottom: 20px; overflow: hidden; display: none; }
+    .progress-bar.active { display: block; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); border-radius: 3px; transition: width .2s ease; width: 0%; }
+
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+    .filter-btn { border: 1px solid var(--border); background: transparent; color: var(--muted); border-radius: 7px; padding: 4px 12px; font-size: 12px; font-family: var(--mono); cursor: pointer; transition: all .12s; }
+    .filter-btn.active { background: var(--surface2); color: var(--fg); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛡</div>
+    <div>
+      <h1>SafeInbox Test Harness</h1>
+      <div class="subtitle">local_scanner.js · moteur de scoring · v2025</div>
+    </div>
+  </div>
+  <button class="run-all-btn" id="runAllBtn">▶ Lancer tous les tests</button>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="stat-label">Total</div><div class="stat-value" id="statTotal">—</div></div>
+  <div class="stat"><div class="stat-label">Détectés</div><div class="stat-value bad" id="statDetected">—</div></div>
+  <div class="stat"><div class="stat-label">Sains passés</div><div class="stat-value ok" id="statOk">—</div></div>
+  <div class="stat"><div class="stat-label">Faux positifs</div><div class="stat-value warn" id="statFp">—</div></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="suite">Suite automatique</button>
+  <button class="tab" data-tab="manual">Test manuel</button>
+</div>
+
+<div class="suite-panel" id="suitePanel">
+  <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="filter-bar">
+    <span style="font-size:12px;color:var(--muted);font-family:var(--mono)">Filtre :</span>
+    <button class="filter-btn active" data-filter="all">Tous</button>
+    <button class="filter-btn" data-filter="phishing">🎣 Phishing</button>
+    <button class="filter-btn" data-filter="legit">✅ Légitimes</button>
+    <button class="filter-btn" data-filter="edge">⚠️ Cas limites</button>
+    <button class="filter-btn" data-filter="fp">🔶 Faux positifs</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Cas de test</th><th>Score</th><th>Verdict attendu</th><th>Raisons détectées</th><th>Résultat</th></tr>
+      </thead>
+      <tbody id="resultsBody">
+        <tr class="loading-row"><td colspan="6">Lance les tests pour voir les résultats ↑</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="manual-panel" id="manualPanel">
+  <h2>// Tester un email manuellement</h2>
+  <div class="form-grid">
+    <div class="field"><label>Sujet</label><input type="text" id="m-subject" placeholder="Ex: URGENT - Vérifiez votre compte" /></div>
+    <div class="field"><label>Expéditeur (email)</label><input type="email" id="m-sender" placeholder="support@faux-domaine.xyz" /></div>
+    <div class="field"><label>Nom affiché</label><input type="text" id="m-senderName" placeholder="PayPal Security" /></div>
+    <div class="field"><label>Liens (un par ligne)</label><textarea id="m-links" placeholder="https://bit.ly/lien-suspect&#10;http://mauvais-site.com/login"></textarea></div>
+    <div class="field full"><label>Corps du message</label><textarea id="m-body" placeholder="Votre compte a été suspendu..."></textarea></div>
+    <div class="field"><label>Pièces jointes (une par ligne)</label><textarea id="m-attachments" placeholder="facture.exe&#10;document.docm"></textarea></div>
+  </div>
+  <button class="run-manual-btn" id="runManualBtn">Analyser cet email →</button>
+  <div class="manual-result" id="manualResult"></div>
+</div>
+
+<script type="module" src="test_harness.js"></script>
+</body>
+</html>

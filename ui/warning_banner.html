@@ -16,6 +16,7 @@
       --accent: var(--med);
       color-scheme: light dark;
     }
+  
     @media (prefers-color-scheme: dark){
       :root{
         --bg: rgba(38,34,25,0.75);
@@ -26,7 +27,14 @@
       margin:0 !important; padding:0 !important; background:transparent;
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }
-
+    .panel {
+      /* ... tes styles existants ... */
+      cursor: pointer;
+    }
+    .btn {
+      /* ... tes styles existants ... */
+      cursor: pointer; /* déjà là, mais ça écrase le parent */
+    }
     /* Carte glassmorphism */
     .wrap{
       width:300px;
