@@ -74,4 +74,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  /* ===========================
+   * 4️⃣ Ouvrir la page rapport
+   * =========================== */
+    if (msg.type === 'openReport') {
+      chrome.tabs.create({ url: msg.url });
+    }
 });

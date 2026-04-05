@@ -140,21 +140,8 @@ panel.addEventListener('click', (e) => {
   ignBtn   ?.addEventListener('click', () => {
     window.parent.postMessage({ type: 'ignoreSender', sender: window.__antiPhishSender || '' }, '*');
   });
-
-  // Voir/masquer détails (chips)
-  let detailsShown = false;
-  detailsBtn?.addEventListener('click', () => {
-    detailsShown = !detailsShown;
-    chips.classList.toggle('show', detailsShown);
-    detailsBtn.textContent = detailsShown ? 'Masquer détails' : 'Voir détails';
-
-    if (panelOpen) {
-      requestAnimationFrame(() => {
-        panel.style.maxHeight = panel.scrollHeight + 'px';
-        sendResize();
-      });
-    }
-  });
+  document.getElementById('reportBtn')
+  ?.addEventListener('click', () => window.parent.postMessage('openReport', '*'));
 
   // Fermer le panneau (si bouton présent)
   closePanel?.addEventListener('click', () => slidePanel(false));

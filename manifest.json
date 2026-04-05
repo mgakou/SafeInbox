@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SafeInbox",
-  "version": "1.0",
+  "version": "2.0",
   "permissions": ["scripting", "activeTab", "storage", "notifications"],
   "host_permissions": ["https://mail.google.com/*"],
   "action": { "default_popup": "popup/popup.html" },
@@ -16,6 +16,8 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "ui/report.html", 
+        "ui/report.js",
         "test_harness.html", 
         "test_harness.js",
         "utils/local_scanner.js",

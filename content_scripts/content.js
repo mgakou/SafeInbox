@@ -385,7 +385,7 @@
     const score = Number(result?.score || 0);
     const reasons = Array.isArray(result?.reasons) ? result.reasons : [];
     const bannerShown = score >= state.threshold;
-
+    
     if (bannerShown) postBannerData({ score, reasons }, emailData);
     else removeBanner();
 
@@ -402,6 +402,18 @@
       mode,
     });
 
+    try {
+          await chrome.storage.local.set({
+            safeInboxReport: {
+              score,
+              reasons,
+              email: emailData,
+              timestamp: new Date().toISOString(),
+            }
+          });
+        } catch (err) {
+          console.warn('[SafeInbox] storage.session unavailable:', err);
+        }
     return { score, reasons, bannerShown };
   }
 
@@ -554,6 +566,13 @@
         if (data === 'deepScanRequest') {
           console.log('[SafeInbox] Deep scan requested (placeholder)');
           await logActionSafe('deep_scan_requested', { gmailUrl: window.location.href });
+        }
+        if (data === 'openReport') {
+          chrome.runtime.sendMessage({ 
+            type: 'openReport',
+            url: chrome.runtime.getURL('ui/report.html')  // ← chemin complet vers le fichier
+          });
+          return;
         }
       } catch (err) {
         if (isContextInvalidatedError(err)) {
